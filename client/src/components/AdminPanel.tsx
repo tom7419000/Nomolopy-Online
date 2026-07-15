@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import type { BoardEdition, GroupId } from '@shared/types';
 import { GROUP_LABELS, GROUP_ORDER } from '@shared/boards';
 import { api } from '../net/socket';
@@ -68,6 +68,38 @@ function ImageUpload({
   );
 }
 
+function TileGroupSection({
+  label,
+  color,
+  neutral,
+  isOpen,
+  onToggle,
+  children,
+}: {
+  label: string;
+  color?: string;
+  neutral?: boolean;
+  isOpen: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className={`tile-group${isOpen ? ' open' : ''}`}>
+      <button
+        type="button"
+        className={`tile-group-head${neutral ? ' neutral' : ''}`}
+        style={color ? { background: color } : undefined}
+        onClick={onToggle}
+        aria-expanded={isOpen}
+      >
+        <span className="tile-group-chevron">{isOpen ? '▾' : '▸'}</span>
+        <span>{label}</span>
+      </button>
+      {isOpen && <div className="tile-rows">{children}</div>}
+    </div>
+  );
+}
+
 export function AdminPanel() {
   const closeDialog = useStore((s) => s.closeDialog);
   const editions = useStore((s) => s.editions);
@@ -75,6 +107,11 @@ export function AdminPanel() {
   const [selectedId, setSelectedId] = useState<string>(editions[0]?.id ?? '');
   const [draft, setDraft] = useState<BoardEdition | null>(null);
   const [busy, setBusy] = useState(false);
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
+
+  function toggleGroup(key: string) {
+    setOpenGroup((cur) => (cur === key ? null : key));
+  }
 
   useEffect(() => {
     const source = editions.find((e) => e.id === selectedId) ?? editions[0];
@@ -241,10 +278,13 @@ export function AdminPanel() {
           <h3>Straßennamen &amp; Bilder</h3>
           <div className="tile-editor">
             {streets.map(({ group, tiles }) => (
-              <div key={group} className="tile-group">
-                <div className="tile-group-head" style={{ background: draft.groupColors[group] }}>
-                  {GROUP_LABELS[group]}
-                </div>
+              <TileGroupSection
+                key={group}
+                label={`${GROUP_LABELS[group]} (${tiles.length})`}
+                color={draft.groupColors[group]}
+                isOpen={openGroup === group}
+                onToggle={() => toggleGroup(group)}
+              >
                 {tiles.map((t) => (
                   <div key={t.id} className="tile-row">
                     <input
@@ -256,10 +296,14 @@ export function AdminPanel() {
                     <ImageUpload label="Bild" value={t.image} onChange={(v) => patchTile(t.id, { image: v })} />
                   </div>
                 ))}
-              </div>
+              </TileGroupSection>
             ))}
-            <div className="tile-group">
-              <div className="tile-group-head neutral">🚂 Bahnhöfe</div>
+            <TileGroupSection
+              label={`🚂 Bahnhöfe (${railroads.length})`}
+              neutral
+              isOpen={openGroup === 'railroads'}
+              onToggle={() => toggleGroup('railroads')}
+            >
               {railroads.map((t) => (
                 <div key={t.id} className="tile-row">
                   <input
@@ -271,9 +315,13 @@ export function AdminPanel() {
                   <ImageUpload label="Bild" value={t.image} onChange={(v) => patchTile(t.id, { image: v })} />
                 </div>
               ))}
-            </div>
-            <div className="tile-group">
-              <div className="tile-group-head neutral">⚡ Werke</div>
+            </TileGroupSection>
+            <TileGroupSection
+              label={`⚡ Werke (${utilities.length})`}
+              neutral
+              isOpen={openGroup === 'utilities'}
+              onToggle={() => toggleGroup('utilities')}
+            >
               {utilities.map((t) => (
                 <div key={t.id} className="tile-row">
                   <input
@@ -285,9 +333,13 @@ export function AdminPanel() {
                   <ImageUpload label="Bild" value={t.image} onChange={(v) => patchTile(t.id, { image: v })} />
                 </div>
               ))}
-            </div>
-            <div className="tile-group">
-              <div className="tile-group-head neutral">Sonderfelder</div>
+            </TileGroupSection>
+            <TileGroupSection
+              label={`Sonderfelder (${specials.length})`}
+              neutral
+              isOpen={openGroup === 'specials'}
+              onToggle={() => toggleGroup('specials')}
+            >
               {specials.map((t) => (
                 <div key={t.id} className="tile-row">
                   <span className="tile-row-pos">#{t.id}</span>
@@ -299,7 +351,7 @@ export function AdminPanel() {
                   />
                 </div>
               ))}
-            </div>
+            </TileGroupSection>
           </div>
         </section>
       </div>
