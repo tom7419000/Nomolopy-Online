@@ -7,6 +7,9 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   root: path.join(root, 'client'),
+  // Relative Asset-Pfade: Der Build funktioniert unter jedem Unterpfad
+  // (z. B. hinter einem Reverse-Proxy auf https://example.de/monopoly/).
+  base: './',
   plugins: [react()],
   resolve: {
     alias: {

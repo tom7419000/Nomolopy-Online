@@ -31,7 +31,9 @@ async function launchBrowser(): Promise<Browser> {
 }
 
 const PORT = 4098;
-const BASE = `http://localhost:${PORT}`;
+/** Optional unter einem Unterpfad testen: E2E_BASE_PATH=/monopoly */
+const BASE_PATH = (process.env.E2E_BASE_PATH ?? '').trim().replace(/\/+$/, '');
+const BASE = `http://localhost:${PORT}${BASE_PATH}`;
 const SHOTS = process.env.E2E_SHOTS_DIR || 'test-results';
 
 function fail(msg: string): never {
@@ -101,7 +103,7 @@ async function main() {
   fs.mkdirSync(SHOTS, { recursive: true });
   const dataDir = fs.mkdtempSync(path.join(process.env.TMPDIR ?? '/tmp', 'nomolopy-e2e-'));
   const server = spawn('npx', ['tsx', 'server/index.ts'], {
-    env: { ...process.env, PORT: String(PORT), DATA_DIR: dataDir },
+    env: { ...process.env, PORT: String(PORT), DATA_DIR: dataDir, BASE_PATH },
     stdio: 'inherit',
   });
   const stopServer = () => {

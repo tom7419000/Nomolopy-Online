@@ -8,9 +8,15 @@ import { io } from 'socket.io-client';
 import type { GameAction } from '@shared/types';
 import { useStore, loadSession, saveSession, clearSession } from '../state/store';
 
+// Socket.io-Pfad aus dem Seitenpfad ableiten, damit die App auch unter
+// einem Unterpfad funktioniert (z. B. https://example.de/monopoly/ →
+// /monopoly/socket.io/). An der Wurzel ergibt das das übliche /socket.io/.
+const socketPath = `${new URL('.', window.location.href).pathname.replace(/\/+$/, '')}/socket.io/`;
+
 export const socket = io({
   // Gleicher Origin: In Produktion liefert der Server den Client aus,
   // im Dev-Modus proxied Vite /socket.io zum Server.
+  path: socketPath,
   autoConnect: true,
 });
 

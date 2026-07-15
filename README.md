@@ -131,6 +131,87 @@ tests/
 
 ---
 
+## Deployment unter einem Pfad (z. B. neben WordPress auf Hetzner)
+
+Das Spiel braucht einen **dauerhaft laufenden Node.js-Prozess** (Socket.io).
+Das funktioniert auf jedem Server mit SSH-/Root-Zugang (Hetzner Cloud,
+Dedicated, Managed Server) – **nicht** auf klassischem Shared-Webhosting
+(nur PHP/FTP). Der Client ist subpfad-fähig gebaut (relative Assets,
+WebSocket-Pfad wird zur Laufzeit abgeleitet), es sind also keine
+Code-Anpassungen nötig.
+
+### 1. App auf dem Server installieren
+
+```bash
+# Node ≥ 20 (Beispiel Ubuntu/Debian)
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs
+
+sudo git clone https://github.com/tom7419000/Nomolopy-Online /opt/nomolopy
+cd /opt/nomolopy && sudo npm ci && sudo npm run build
+```
+
+### 2. Als systemd-Dienst starten
+
+`/etc/systemd/system/nomolopy.service`:
+
+```ini
+[Unit]
+Description=Nomolopy Online (Monopoly)
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/nomolopy
+ExecStart=/usr/bin/npm start
+Environment=PORT=3001
+Restart=always
+User=www-data
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl enable --now nomolopy
+curl http://127.0.0.1:3001/healthz   # → {"ok":true}
+```
+
+### 3. Reverse-Proxy auf den Pfad legen
+
+Die Direktiven gehören in den **vHost** (nicht in die `.htaccess` –
+`ProxyPass` funktioniert dort nicht) und haben Vorrang vor den
+WordPress-Rewrite-Regeln.
+
+**Apache** (≥ 2.4.47, `a2enmod proxy proxy_http proxy_wstunnel`):
+
+```apache
+# im vHost der WordPress-Seite:
+ProxyPass        /monopoly/ http://127.0.0.1:3001/ upgrade=websocket
+ProxyPassReverse /monopoly/ http://127.0.0.1:3001/
+Redirect         /monopoly  /monopoly/
+```
+
+**nginx**:
+
+```nginx
+location /monopoly/ {
+    proxy_pass http://127.0.0.1:3001/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+}
+location = /monopoly { return 301 /monopoly/; }
+```
+
+**Plesk**: Domain → „Apache & nginx Einstellungen“ → *Zusätzliche
+nginx-Anweisungen* → den nginx-Block von oben eintragen.
+
+Danach läuft das Spiel unter `https://deine-domain.de/monopoly/` –
+in WordPress einfach einen Menüpunkt als „Individuellen Link“ darauf
+anlegen. Alternativ (Proxy behält den Präfix bei): den Dienst mit
+`Environment=BASE_PATH=/monopoly` starten und ohne abschließenden
+Slash proxyen.
+
 ## Bedienung
 
 1. **Startbildschirm**: Name eingeben → *Spiel erstellen* (Edition + Preset wählen)
