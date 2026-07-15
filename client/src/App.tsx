@@ -1,26 +1,49 @@
 import { useEffect } from 'react';
 import './net/socket';
 import { useIsMyTurn, useStore } from './state/store';
-import { AdminPanel } from './components/AdminPanel';
-import { CardModal, DebugDialog, PropertyDialog, SavesDialog, TradeDialog } from './components/Dialogs';
-import { GameTable } from './components/GameTable';
-import { Lobby } from './components/Lobby';
-import { StartScreen } from './components/StartScreen';
+import { navigate, roomHash, useHashRoute } from './hooks/useHashRoute';
+import { Home } from './pages/Home';
+import { JoinRoom } from './pages/JoinRoom';
+import { RoomPage } from './pages/Room';
+import { GameTable } from './games/monopoly/GameTable';
+import { PokerTable } from './games/poker/PokerTable';
+import { AdminPanel } from './games/monopoly/AdminPanel';
+import { CardModal, DebugDialog, PropertyDialog, SavesDialog, TradeDialog } from './games/monopoly/Dialogs';
 import { Toasts } from './components/Toasts';
 
 export default function App() {
+  const room = useStore((s) => s.room);
   const game = useStore((s) => s.game);
+  const poker = useStore((s) => s.poker);
   const dialog = useStore((s) => s.dialog);
   const isMyTurn = useIsMyTurn();
+  const route = useHashRoute();
 
   useEffect(() => {
-    document.title = isMyTurn ? '🎲 Du bist dran! · Nomolopy' : 'Nomolopy Online';
+    document.title = isMyTurn ? '🎲 Du bist dran! · PlayHub' : 'PlayHub – Spieleabend online';
   }, [isMyTurn]);
 
+  // URL mit dem Raum synchron halten (teilbare Links)
+  useEffect(() => {
+    if (room) {
+      if (window.location.hash !== roomHash(room.meta.code)) navigate({ page: 'room', code: room.meta.code });
+    } else if (route.page === 'room' && !useStore.getState().session) {
+      // Raum verlassen → Link-Ansicht bleibt nur, wenn es eine fremde Einladung ist
+    }
+  }, [room, route.page]);
+
+  const phase = game?.phase ?? poker?.phase ?? null;
+
   let screen: React.ReactNode;
-  if (!game) screen = <StartScreen />;
-  else if (game.phase === 'lobby') screen = <Lobby />;
-  else screen = <GameTable />;
+  if (room && phase && phase !== 'lobby') {
+    screen = game ? <GameTable /> : <PokerTable />;
+  } else if (room) {
+    screen = <RoomPage />;
+  } else if (route.page === 'room') {
+    screen = <JoinRoom code={route.code} />;
+  } else {
+    screen = <Home />;
+  }
 
   return (
     <>

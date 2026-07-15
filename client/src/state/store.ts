@@ -1,11 +1,14 @@
 import { create } from 'zustand';
 import type { BoardEdition, GameState, Player, RulePreset } from '@shared/types';
+import type { LobbyChatMessage, PublicRoomInfo, RoomEnvelope } from '@shared/games';
+import type { PokerView } from '@shared/poker/types';
 
 export interface Session {
   code: string;
   playerId: string;
   token: string;
   name: string;
+  spectator?: boolean;
 }
 
 export interface Toast {
@@ -27,13 +30,23 @@ interface AppStore {
   editions: BoardEdition[];
   presets: RulePreset[];
   session: Session | null;
+  /** Aktueller Raum (Hülle mit meta + genau einem Spielzustand) */
+  room: RoomEnvelope | null;
+  /** Bequemer Zugriff: Monopoly-Zustand, wenn der Raum Monopoly spielt */
   game: GameState | null;
+  /** Bequemer Zugriff: redigierte Poker-Sicht, wenn der Raum Poker spielt */
+  poker: PokerView | null;
+  lobbyRooms: PublicRoomInfo[];
+  lobbyChat: LobbyChatMessage[];
   toasts: Toast[];
   dialog: Dialog;
   setConnected(v: boolean): void;
   setCatalog(editions: BoardEdition[], presets: RulePreset[]): void;
-  setGame(game: GameState | null): void;
+  setRoom(room: RoomEnvelope | null): void;
   setSession(session: Session | null): void;
+  setLobbyRooms(rooms: PublicRoomInfo[]): void;
+  setLobbyChat(messages: LobbyChatMessage[]): void;
+  pushLobbyChat(message: LobbyChatMessage): void;
   addToast(kind: Toast['kind'], text: string): void;
   dismissToast(id: number): void;
   openDialog(dialog: Dialog): void;
@@ -47,7 +60,11 @@ export const useStore = create<AppStore>((set, get) => ({
   editions: [],
   presets: [],
   session: loadSession(),
+  room: null,
   game: null,
+  poker: null,
+  lobbyRooms: [],
+  lobbyChat: [],
   toasts: [],
   dialog: null,
 
@@ -55,35 +72,58 @@ export const useStore = create<AppStore>((set, get) => ({
 
   setCatalog: (editions, presets) => set({ editions, presets }),
 
-  setGame: (game) => {
-    const { game: prev, session, addToast } = get();
+  setRoom: (room) => {
+    const { game: prevGame, poker: prevPoker, session, addToast } = get();
+    const game = room?.monopoly ?? null;
+    const poker = room?.poker ?? null;
+
+    // Monopoly: „Du bist dran"-Hinweis
     if (game && session && game.phase === 'playing') {
       const nowCurrent = game.players[game.currentPlayer];
       const prevCurrent =
-        prev && prev.phase === 'playing' ? prev.players[prev.currentPlayer] : null;
+        prevGame && prevGame.phase === 'playing' ? prevGame.players[prevGame.currentPlayer] : null;
       const becameMyTurn =
         nowCurrent?.id === session.playerId &&
-        (prevCurrent?.id !== session.playerId || prev?.phase !== 'playing');
+        (prevCurrent?.id !== session.playerId || prevGame?.phase !== 'playing');
       if (becameMyTurn && game.turnPhase === 'awaiting-roll') {
         addToast('turn', '🎲 Du bist dran!');
       }
       const newTradeForMe =
-        game.trade &&
-        game.trade.toId === session.playerId &&
-        prev?.trade?.id !== game.trade.id;
+        game.trade && game.trade.toId === session.playerId && prevGame?.trade?.id !== game.trade.id;
       if (newTradeForMe) {
         const from = game.players.find((p) => p.id === game.trade!.fromId);
         addToast('info', `🤝 ${from?.name ?? 'Jemand'} schlägt dir einen Handel vor.`);
       }
     }
-    set({ game });
+
+    // Poker: „Du bist dran"-Hinweis
+    if (poker && session && poker.phase === 'playing' && poker.toActIndex !== null) {
+      const actor = poker.players[poker.toActIndex];
+      const prevActor =
+        prevPoker && prevPoker.toActIndex !== null ? prevPoker.players[prevPoker.toActIndex] : null;
+      if (actor?.id === session.playerId && prevActor?.id !== session.playerId) {
+        addToast('turn', '🃏 Du bist dran!');
+      }
+    }
+
+    set({ room, game, poker });
   },
 
   setSession: (session) => set({ session }),
 
+  setLobbyRooms: (lobbyRooms) => set({ lobbyRooms }),
+
+  setLobbyChat: (lobbyChat) => set({ lobbyChat }),
+
+  pushLobbyChat: (message) =>
+    set((s) => ({ lobbyChat: [...s.lobbyChat.slice(-99), message] })),
+
   addToast: (kind, text) => {
     const id = toastSeq++;
-    set((s) => ({ toasts: [...s.toasts.slice(-4), { id, kind, text }] }));
+    set((s) => ({
+      // „Du bist dran"-Hinweise nicht stapeln – der neueste ersetzt den alten
+      toasts: [...s.toasts.filter((t) => !(kind === 'turn' && t.kind === 'turn')).slice(-4), { id, kind, text }],
+    }));
     setTimeout(() => get().dismissToast(id), kind === 'error' ? 6000 : 4000);
   },
 
@@ -106,8 +146,14 @@ export function useMe(): Player | undefined {
 
 export function useIsMyTurn(): boolean {
   return useStore((s) => {
-    if (!s.game || !s.session || s.game.phase !== 'playing') return false;
-    return s.game.players[s.game.currentPlayer]?.id === s.session.playerId;
+    if (!s.session) return false;
+    if (s.game && s.game.phase === 'playing') {
+      return s.game.players[s.game.currentPlayer]?.id === s.session.playerId;
+    }
+    if (s.poker && s.poker.phase === 'playing' && s.poker.toActIndex !== null) {
+      return s.poker.players[s.poker.toActIndex]?.id === s.session.playerId;
+    }
+    return false;
   });
 }
 
@@ -115,8 +161,9 @@ export function useIsMyTurn(): boolean {
 // LocalStorage
 // ---------------------------------------------------------------------------
 
-const SESSION_KEY = 'nomolopy.session';
-const NAME_KEY = 'nomolopy.name';
+const SESSION_KEY = 'playhub.session';
+const NAME_KEY = 'playhub.name';
+const LEGACY_NAME_KEY = 'nomolopy.name';
 
 export function loadSession(): Session | null {
   try {
@@ -149,7 +196,7 @@ export function clearSession(): void {
 
 export function loadName(): string {
   try {
-    return localStorage.getItem(NAME_KEY) ?? '';
+    return localStorage.getItem(NAME_KEY) ?? localStorage.getItem(LEGACY_NAME_KEY) ?? '';
   } catch {
     return '';
   }

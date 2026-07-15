@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { api } from '../net/socket';
-import { useMe, useStore } from '../state/store';
+import { api } from '../../net/socket';
+import { useMe, useStore } from '../../state/store';
 import { Board } from './Board';
 import { GameOverModal } from './Dialogs';
 import { ActionsPanel, ChatPanel, LogPanel, PlayersPanel } from './Panels';

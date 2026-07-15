@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { GameState, Player, TileDef } from '@shared/types';
 import { computeRent } from '@shared/engine';
-import { money, softHyphenate, tileIcon } from '../ui/format';
-import { tileCenterPct, tileGridPos, tileSide, tokenOffset } from '../ui/layout';
-import { useStore } from '../state/store';
+import { money, softHyphenate, tileIcon } from '../../ui/format';
+import { tileCenterPct, tileGridPos, tileSide, tokenOffset } from '../../ui/layout';
+import { useStore } from '../../state/store';
 
 /**
  * Figuren laufen Feld für Feld: Wir halten pro Spieler eine "angezeigte"

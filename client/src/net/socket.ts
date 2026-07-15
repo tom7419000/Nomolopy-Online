@@ -1,16 +1,19 @@
 /**
  * Socket.io-Anbindung: eine Verbindung für die gesamte App.
  * Alle Anfragen laufen als Request/Response über Acknowledgements,
- * der Spielzustand kommt als 'state'-Broadcast.
+ * der Raum-Zustand kommt als 'state'-Broadcast (bei Poker pro Spieler
+ * redigiert), dazu Lobby-Events für Raumliste und globalen Chat.
  */
 
 import { io } from 'socket.io-client';
 import type { GameAction } from '@shared/types';
+import type { GameId, RoomEnvelope } from '@shared/games';
+import type { PokerAction, PokerRules } from '@shared/poker/types';
 import { useStore, loadSession, saveSession, clearSession } from '../state/store';
 
 // Socket.io-Pfad aus dem Seitenpfad ableiten, damit die App auch unter
-// einem Unterpfad funktioniert (z. B. https://example.de/monopoly/ →
-// /monopoly/socket.io/). An der Wurzel ergibt das das übliche /socket.io/.
+// einem Unterpfad funktioniert (z. B. https://example.de/playhub/ →
+// /playhub/socket.io/). An der Wurzel ergibt das das übliche /socket.io/.
 const socketPath = `${new URL('.', window.location.href).pathname.replace(/\/+$/, '')}/socket.io/`;
 
 export const socket = io({
@@ -47,13 +50,13 @@ socket.on('connect', async () => {
   if (session) {
     const r = await call('room:rejoin', session);
     if (r.ok) {
-      useStore.getState().setSession(session);
+      useStore.getState().setSession({ ...session, spectator: Boolean(r.spectator) });
     } else {
-      const hadGame = useStore.getState().game !== null;
+      const hadRoom = useStore.getState().room !== null;
       clearSession();
       useStore.getState().setSession(null);
-      useStore.getState().setGame(null);
-      if (hadGame) useStore.getState().addToast('error', r.error ?? 'Sitzung abgelaufen.');
+      useStore.getState().setRoom(null);
+      if (hadRoom) useStore.getState().addToast('error', r.error ?? 'Sitzung abgelaufen.');
     }
   }
 });
@@ -62,12 +65,24 @@ socket.on('disconnect', () => {
   useStore.getState().setConnected(false);
 });
 
-socket.on('state', (game) => {
-  useStore.getState().setGame(game);
+socket.on('state', (room: RoomEnvelope) => {
+  useStore.getState().setRoom(room);
 });
 
 socket.on('catalog', (payload) => {
   useStore.getState().setCatalog(payload.editions ?? [], payload.presets ?? []);
+});
+
+socket.on('lobby:rooms', (payload) => {
+  useStore.getState().setLobbyRooms(payload?.rooms ?? []);
+});
+
+socket.on('lobby:chat:history', (payload) => {
+  useStore.getState().setLobbyChat(payload?.messages ?? []);
+});
+
+socket.on('lobby:chat:new', (payload) => {
+  if (payload?.message) useStore.getState().pushLobbyChat(payload.message);
 });
 
 socket.on('identity', (payload: { code: string; playerId: string; token: string }) => {
@@ -80,7 +95,7 @@ socket.on('identity', (payload: { code: string; playerId: string; token: string 
 socket.on('kicked', (payload: { reason?: string }) => {
   clearSession();
   useStore.getState().setSession(null);
-  useStore.getState().setGame(null);
+  useStore.getState().setRoom(null);
   useStore.getState().addToast('error', payload?.reason ?? 'Du wurdest aus dem Raum entfernt.');
 });
 
@@ -94,34 +109,41 @@ async function withErrorToast<T extends Resp>(p: Promise<T>): Promise<T> {
   return r;
 }
 
+function storeJoinReply(r: Resp, name: string): void {
+  if (!r.ok) return;
+  const session = {
+    code: String(r.code),
+    playerId: String(r.playerId),
+    token: String(r.token),
+    name,
+    spectator: Boolean(r.spectator),
+  };
+  saveSession(session);
+  useStore.getState().setSession(session);
+}
+
+export interface CreateRoomOptions {
+  name: string;
+  gameId: GameId;
+  roomName?: string;
+  description?: string;
+  isPublic?: boolean;
+  maxPlayers?: number;
+  editionId?: string;
+  presetId?: string;
+  pokerRules?: Partial<PokerRules>;
+}
+
 export const api = {
-  async createRoom(name: string, editionId: string, presetId: string) {
-    const r = await withErrorToast(call('room:create', { name, editionId, presetId }));
-    if (r.ok) {
-      const session = {
-        code: String(r.code),
-        playerId: String(r.playerId),
-        token: String(r.token),
-        name,
-      };
-      saveSession(session);
-      useStore.getState().setSession(session);
-    }
+  async createRoom(options: CreateRoomOptions) {
+    const r = await withErrorToast(call('room:create', options));
+    storeJoinReply(r, options.name);
     return r;
   },
 
   async joinRoom(code: string, name: string) {
     const r = await withErrorToast(call('room:join', { code, name }));
-    if (r.ok) {
-      const session = {
-        code: String(r.code),
-        playerId: String(r.playerId),
-        token: String(r.token),
-        name,
-      };
-      saveSession(session);
-      useStore.getState().setSession(session);
-    }
+    storeJoinReply(r, name);
     return r;
   },
 
@@ -129,10 +151,14 @@ export const api = {
     await call('room:leave');
     clearSession();
     useStore.getState().setSession(null);
-    useStore.getState().setGame(null);
+    useStore.getState().setRoom(null);
   },
 
   action(action: GameAction) {
+    return withErrorToast(call('game:action', action));
+  },
+
+  pokerAction(action: PokerAction) {
     return withErrorToast(call('game:action', action));
   },
 
@@ -140,7 +166,24 @@ export const api = {
     return withErrorToast(call('chat:send', { text }));
   },
 
-  configureLobby(payload: { editionId?: string; presetId?: string; rules?: Record<string, unknown> }) {
+  lobbyChat(name: string, text: string) {
+    return withErrorToast(call('lobby:chat', { name, text }));
+  },
+
+  kick(targetId: string) {
+    return withErrorToast(call('room:kick', { targetId }));
+  },
+
+  configureLobby(payload: {
+    roomName?: string;
+    description?: string;
+    isPublic?: boolean;
+    maxPlayers?: number;
+    editionId?: string;
+    presetId?: string;
+    rules?: Record<string, unknown>;
+    poker?: Partial<PokerRules>;
+  }) {
     return withErrorToast(call('lobby:configure', payload));
   },
 

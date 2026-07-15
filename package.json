@@ -1,8 +1,8 @@
 {
-  "name": "nomolopy-online",
-  "version": "1.0.0",
+  "name": "playhub",
+  "version": "2.0.0",
   "private": true,
-  "description": "Nomolopy Online – Monopoly-Webanwendung mit Echtzeit-Multiplayer (React + TypeScript + Socket.io)",
+  "description": "PlayHub – Gaming-Plattform mit Monopoly & Texas Hold'em Poker im Echtzeit-Multiplayer (React + TypeScript + Socket.io)",
   "type": "module",
   "engines": {
     "node": ">=20"
@@ -14,8 +14,9 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.server.json",
     "start": "tsx server/index.ts",
-    "test": "tsx --test tests/engine.test.ts",
-    "test:e2e": "tsx tests/e2e.ts"
+    "test": "tsx --test tests/engine.test.ts tests/poker.test.ts",
+    "test:e2e": "tsx tests/e2e.ts",
+    "test:e2e:poker": "tsx tests/e2e-poker.ts"
   },
   "dependencies": {
     "express": "^4.21.2",

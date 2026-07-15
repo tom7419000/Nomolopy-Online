@@ -40,7 +40,7 @@ if (fs.existsSync(CLIENT_DIST)) {
   app.get('/', (_req, res) =>
     res
       .status(200)
-      .send('Nomolopy-Server läuft. Client-Build fehlt – im Dev-Modus bitte http://localhost:5173 öffnen.')
+      .send('PlayHub-Server läuft. Client-Build fehlt – im Dev-Modus bitte http://localhost:5173 öffnen.')
   );
 }
 
@@ -55,5 +55,5 @@ const io = new Server(server, {
 registerHandlers(io);
 
 server.listen(PORT, () => {
-  console.log(`🎲 Nomolopy-Server läuft auf http://localhost:${PORT}${BASE_PATH}/`);
+  console.log(`🎮 PlayHub-Server läuft auf http://localhost:${PORT}${BASE_PATH}/`);
 });

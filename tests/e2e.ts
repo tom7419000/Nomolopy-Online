@@ -140,24 +140,24 @@ async function main() {
       });
     }
 
-    // --- Startbildschirm & Raum erstellen -------------------------------
+    // --- Startseite (PlayHub) & Monopoly-Raum erstellen -------------------
     await pageA.goto(BASE);
     await pageA.getByPlaceholder('z. B. Alex').fill('Anna');
     await pageA.screenshot({ path: `${SHOTS}/01-start.png` });
-    await pageA.getByText('Spiel erstellen', { exact: true }).click();
+    await pageA.locator('.game-choice.game-monopoly').getByRole('button', { name: 'Raum erstellen' }).click();
+    await pageA.getByRole('button', { name: '🎲 Raum erstellen' }).click();
     await pageA.locator('.room-code strong').waitFor();
     const code = (await pageA.locator('.room-code strong').textContent())!.trim();
     if (!/^[A-Z0-9]{5}$/.test(code)) fail(`Unerwarteter Raum-Code: ${code}`);
-    console.log(`✔ Raum erstellt: ${code}`);
+    console.log(`✔ Monopoly-Raum erstellt: ${code}`);
 
-    // --- Beitreten -------------------------------------------------------
-    await pageB.goto(BASE);
+    // --- Beitreten über den teilbaren Link ---------------------------------
+    await pageB.goto(`${BASE}/#/room/${code}`);
     await pageB.getByPlaceholder('z. B. Alex').fill('Ben');
-    await pageB.getByPlaceholder('z. B. Q7WK3').fill(code);
-    await pageB.getByText('Beitreten', { exact: true }).click();
+    await pageB.getByRole('button', { name: 'Beitreten' }).click();
     await pageB.locator('.lobby-players li', { hasText: 'Ben' }).waitFor();
     await pageA.locator('.lobby-players li', { hasText: 'Ben' }).waitFor();
-    console.log('✔ Ben ist der Lobby beigetreten (Live-Sync ok)');
+    console.log('✔ Ben ist über den Raum-Link beigetreten (Live-Sync ok)');
 
     // --- Debug-Modus aktivieren & starten --------------------------------
     // (kontrollierte Checkbox: Zustand ändert sich erst nach Server-Roundtrip)
