@@ -9,6 +9,7 @@ import { GameTable } from './games/monopoly/GameTable';
 import { PokerTable } from './games/poker/PokerTable';
 import { AdminPanel } from './games/monopoly/AdminPanel';
 import { CardModal, DebugDialog, PropertyDialog, SavesDialog, TradeDialog } from './games/monopoly/Dialogs';
+import { InstallBanner } from './components/InstallBanner';
 import { Toasts } from './components/Toasts';
 
 export default function App() {
@@ -58,6 +59,7 @@ export default function App() {
       {dialog?.type === 'property' && game && <PropertyDialog game={game} tileId={dialog.tileId} />}
       {dialog?.type === 'trade' && game && <TradeDialog game={game} />}
 
+      <InstallBanner />
       <Toasts />
     </>
   );

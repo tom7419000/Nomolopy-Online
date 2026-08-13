@@ -37,11 +37,52 @@ LAN einfach `http://<deine-IP>:3001` an die Mitspieler geben. Port per `PORT`,
 Datenverzeichnis (Editionen/Spielstände) per `DATA_DIR` konfigurierbar.
 
 ```bash
-npm test                            # Unit-Tests: Monopoly-Regeln + Poker-Engine (38 Tests)
-npm run build && npm run test:e2e   # Browser-E2E: Monopoly (Playwright)
-npm run build && npm run test:e2e:poker  # Browser-E2E: Poker inkl. Karten-Redaction
+npm test                                 # Unit-Tests: Monopoly-Regeln + Poker-Engine (38 Tests)
 npm run typecheck
+npm run build && npm run test:e2e        # Browser-E2E: Monopoly (Playwright)
+npm run build && npm run test:e2e:poker  # Browser-E2E: Poker inkl. Karten-Redaction
+npm run build && npm run test:e2e:pwa    # Browser-E2E: Manifest, Service Worker, Offline
 ```
+
+> Die E2E-Tests starten je einen eigenen Server (Ports 4096–4098). Bricht ein
+> Lauf hart ab, können Server zurückbleiben – dann vor dem nächsten Lauf
+> `pkill -f "server/index.ts"` ausführen.
+
+---
+
+## 📱 Als App installieren (PWA)
+
+PlayHub ist eine installierbare Progressive Web App: eigenes Fenster ohne
+Adressleiste, eigenes Icon, und die Oberfläche startet auch ohne Netz.
+
+| Plattform | Installation |
+|---|---|
+| **Chrome/Edge (Desktop)** | Installations-Symbol in der Adressleiste – oder die Leiste „PlayHub installieren" unten in der App |
+| **Android (Chrome)** | Banner „PlayHub installieren" bzw. Menü → *App installieren* |
+| **iOS (Safari)** | Teilen-Symbol → *Zum Home-Bildschirm*. Die App zeigt dazu von selbst einen Hinweis. |
+
+**Was offline funktioniert:** Oberfläche, Spiele-Katalog, Assets und der
+lokale Pass-&-Play-Modus. Online-Multiplayer braucht naturgemäß eine
+Verbindung – die Statusanzeige meldet den Verbindungsverlust ehrlich und
+verbindet automatisch neu.
+
+**Updates ohne veraltete Assets:** Die Build-Kennung wandert als `?v=…` in die
+Service-Worker-URL, sodass jeder Build automatisch als neue Version erkannt
+wird – ohne manuell gepflegte Versionsnummer. Dabei gilt:
+
+- `index.html` läuft **network-first** → online immer die frische Fassung
+- gehashte Assets (`/assets/index-ABC123.js`) laufen **cache-first** → sie sind
+  unveränderlich, Vite vergibt bei Inhaltsänderung einen neuen Dateinamen
+- beim Aktivieren werden Caches fremder Versionen gelöscht
+- `/socket.io/` wird **nie** gecacht
+
+Ein Update lädt die Seite **nicht** von selbst neu – das würde eine laufende
+Partie zerstören. Stattdessen erscheint die Leiste „Neue Version verfügbar",
+und erst ein Klick auf *Neu laden* übernimmt sie.
+
+Icons werden reproduzierbar aus einer SVG-Vorlage erzeugt (`npm run icons`,
+gerendert mit Chromium); die PNGs sind eingecheckt, der normale Build braucht
+das Skript nicht.
 
 ---
 

@@ -1301,6 +1301,37 @@ input[type='number'] { appearance: textfield; }
 .raise-quick { display: flex; gap: 4px; }
 
 /* --------------------------------------------------------------------------
+   PWA-Leisten (Installation & Update)
+   -------------------------------------------------------------------------- */
+
+.pwa-banner {
+  position: fixed;
+  left: 50%;
+  bottom: max(14px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 95;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: min(520px, calc(100vw - 24px));
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  animation: banner-in 0.25s ease-out;
+}
+.pwa-banner.update { border-color: var(--accent); }
+.pwa-banner-icon { font-size: 1.5rem; flex: none; }
+.pwa-banner-text { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.pwa-banner-text strong { font-size: 0.92rem; }
+
+@keyframes banner-in {
+  from { opacity: 0; transform: translate(-50%, 12px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* --------------------------------------------------------------------------
    Responsive
    -------------------------------------------------------------------------- */
 

@@ -16,9 +16,13 @@
     "start": "tsx server/index.ts",
     "test": "tsx --test tests/engine.test.ts tests/poker.test.ts",
     "test:e2e": "tsx tests/e2e.ts",
-    "test:e2e:poker": "tsx tests/e2e-poker.ts"
+    "test:e2e:poker": "tsx tests/e2e-poker.ts",
+    "test:e2e:pwa": "tsx tests/e2e-pwa.ts",
+    "icons": "tsx scripts/generate-icons.ts"
   },
   "dependencies": {
+    "better-sqlite3": "^11.10.0",
+    "chess.js": "^1.4.0",
     "express": "^4.21.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
