@@ -10,6 +10,7 @@ import {
 } from '@shared/engine';
 import { GROUP_ORDER } from '@shared/boards';
 import { api } from '../../net';
+import { AuctionBox } from './AuctionBox';
 import { useMe, useStore } from '../../state/store';
 import { money, phaseLabel, timeHHMM } from '../../ui/format';
 
@@ -240,6 +241,8 @@ export function ActionsPanel() {
           </>
         )}
       </div>
+
+      {game.phase === 'playing' && game.auction && <AuctionBox game={game} />}
 
       {game.phase === 'playing' && game.turnPhase === 'debt' && game.debt?.playerId === me.id && (
         <DebtBox game={game} />

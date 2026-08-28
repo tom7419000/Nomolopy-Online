@@ -5,6 +5,11 @@ export const CLASSIC_RULES: RuleSet = {
   goSalary: 200,
   freeParkingBonus: false,
   doubleRentFullGroup: true,
+  // Vorgabe bewusst AUS: Auktionen sind zwar die Originalregel, aber der
+  // Schalter soll bewusst umgelegt werden – so bleibt das Verhalten
+  // bestehender Partien und Tests unverändert.
+  auctionOnSkip: false,
+  auctionBidSeconds: 30,
   jailFine: 50,
   maxJailTurns: 3,
   mortgageInterest: 0.1,
@@ -18,8 +23,9 @@ export const RULE_PRESETS: RulePreset[] = [
     id: 'classic',
     name: 'Originalversion',
     description:
-      'Die klassischen Regeln: 1.500 Startkapital, 200 Gehalt, kein Frei-Parken-Bonus.',
-    rules: { ...CLASSIC_RULES },
+      'Die klassischen Regeln: 1.500 Startkapital, 200 Gehalt, kein Frei-Parken-Bonus – ' +
+      'und ausgeschlagene Grundstücke kommen unter den Hammer.',
+    rules: { ...CLASSIC_RULES, auctionOnSkip: true },
   },
   {
     id: 'fast',
@@ -31,6 +37,7 @@ export const RULE_PRESETS: RulePreset[] = [
       startingMoney: 2500,
       goSalary: 300,
       freeParkingBonus: true,
+      auctionOnSkip: false,
     },
   },
   {
@@ -42,6 +49,8 @@ export const RULE_PRESETS: RulePreset[] = [
       ...CLASSIC_RULES,
       startingMoney: 1000,
       jailFine: 100,
+      auctionOnSkip: true,
+      auctionBidSeconds: 20,
     },
   },
 ];
@@ -64,5 +73,7 @@ export const RULE_FIELDS: {
   { key: 'jailFine', label: 'Gefängnis-Kaution', kind: 'number', min: 0, max: 500, step: 10 },
   { key: 'freeParkingBonus', label: 'Frei-Parken-Bonus (Steuern in den Topf)', kind: 'boolean' },
   { key: 'doubleRentFullGroup', label: 'Doppelte Miete bei kompletter Farbgruppe', kind: 'boolean' },
+  { key: 'auctionOnSkip', label: 'Ausgeschlagene Grundstücke versteigern (Originalregel)', kind: 'boolean' },
+  { key: 'auctionBidSeconds', label: 'Bedenkzeit pro Gebot (Sek., 0 = keine)', kind: 'number', min: 0, max: 120, step: 5 },
   { key: 'debugMode', label: 'Debug-Modus (Würfel manuell setzbar)', kind: 'boolean' },
 ];

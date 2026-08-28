@@ -9,6 +9,8 @@ import type { GameState } from '../shared/types';
 import {
   addPlayer,
   applyAction,
+  auctionBidderId,
+  auctionTick,
   canBuildOn,
   computeRent,
   createGame,
@@ -331,4 +333,155 @@ test('Ungültige Aktionen werden abgelehnt', () => {
   // setDice ohne Debug-Modus
   g.rules.debugMode = false;
   assert.equal(applyAction(g, 'p1', { type: 'setDice', dice: [1, 1] }).ok, false);
+});
+
+// ---------------------------------------------------------------------------
+// Auktionen (Regeloption `auctionOnSkip`)
+// ---------------------------------------------------------------------------
+
+/** Spiel mit eingeschalteter Auktion; p1 steht vor dem Südbahnhof (Feld 5). */
+function auctionGame(playerCount = 3): GameState {
+  const g = newGame(playerCount);
+  g.rules.auctionOnSkip = true;
+  g.rules.auctionBidSeconds = 0; // ohne Uhr – Zeitverhalten wird separat geprüft
+  roll(g, 'p1', 2, 3); // → Feld 5, Südbahnhof (200)
+  assert.equal(g.turnPhase, 'awaiting-buy');
+  return g;
+}
+
+test('Auktion aus: ausgeschlagenes Grundstück bleibt schlicht frei', () => {
+  const g = newGame(3);
+  assert.equal(g.rules.auctionOnSkip, false, 'Vorgabe bleibt das bisherige Verhalten');
+  roll(g, 'p1', 2, 3);
+  assert.ok(applyAction(g, 'p1', { type: 'skipBuy' }).ok);
+  assert.equal(g.turnPhase, 'awaiting-end');
+  assert.equal(g.auction, null);
+  assert.equal(g.properties[5].ownerId, null);
+});
+
+test('Auktion an: Verzicht eröffnet die Versteigerung', () => {
+  const g = auctionGame();
+  assert.ok(applyAction(g, 'p1', { type: 'skipBuy' }).ok);
+  assert.equal(g.turnPhase, 'auction');
+  assert.equal(g.auction?.tileId, 5);
+  assert.deepEqual(g.auction?.order, ['p1', 'p2', 'p3'], 'reihum ab dem aktuellen Spieler');
+  assert.equal(g.auction?.highBidderId, null);
+});
+
+test('Auktion: reihum bieten, letzter Bieter bekommt den Zuschlag', () => {
+  const g = auctionGame();
+  applyAction(g, 'p1', { type: 'skipBuy' });
+
+  assert.ok(applyAction(g, 'p1', { type: 'bid', amount: 50 }).ok);
+  assert.ok(applyAction(g, 'p2', { type: 'bid', amount: 80 }).ok);
+  assert.ok(applyAction(g, 'p3', { type: 'passAuction' }).ok);
+  assert.ok(applyAction(g, 'p1', { type: 'passAuction' }).ok);
+
+  // Nur noch p2 übrig → Zuschlag zum Höchstgebot
+  assert.equal(g.auction, null);
+  assert.equal(g.properties[5].ownerId, 'p2');
+  assert.equal(getPlayer(g, 'p2')!.money, 1500 - 80);
+  assert.equal(g.turnPhase, 'awaiting-end', 'der Zug von p1 geht normal weiter');
+});
+
+test('Auktion: passen alle ohne Gebot, bleibt das Feld unverkauft', () => {
+  const g = auctionGame();
+  applyAction(g, 'p1', { type: 'skipBuy' });
+
+  assert.ok(applyAction(g, 'p1', { type: 'passAuction' }).ok);
+  assert.ok(applyAction(g, 'p2', { type: 'passAuction' }).ok);
+  assert.ok(applyAction(g, 'p3', { type: 'passAuction' }).ok);
+
+  assert.equal(g.auction, null);
+  assert.equal(g.properties[5].ownerId, null);
+  assert.equal(g.turnPhase, 'awaiting-end');
+  for (const p of g.players) assert.equal(p.money, 1500, 'niemand zahlt etwas');
+});
+
+test('Auktion: Gebot über dem eigenen Bargeld wird abgelehnt', () => {
+  const g = auctionGame();
+  applyAction(g, 'p1', { type: 'skipBuy' });
+  getPlayer(g, 'p1')!.money = 100;
+
+  const r = applyAction(g, 'p1', { type: 'bid', amount: 150 });
+  assert.equal(r.ok, false);
+  assert.match(r.error ?? '', /Bargeld/);
+  assert.ok(applyAction(g, 'p1', { type: 'bid', amount: 100 }).ok, 'genau das Bargeld geht');
+});
+
+test('Auktion: zu niedriges Gebot und Bieten außer der Reihe werden abgelehnt', () => {
+  const g = auctionGame();
+  applyAction(g, 'p1', { type: 'skipBuy' });
+
+  // p2 ist noch nicht dran
+  assert.equal(applyAction(g, 'p2', { type: 'bid', amount: 50 }).ok, false);
+
+  assert.ok(applyAction(g, 'p1', { type: 'bid', amount: 50 }).ok);
+  // p2 muss das Höchstgebot überbieten
+  assert.equal(applyAction(g, 'p2', { type: 'bid', amount: 50 }).ok, false);
+  assert.ok(applyAction(g, 'p2', { type: 'bid', amount: 51 }).ok);
+});
+
+test('Auktion: wer gepasst hat, ist raus und wird übersprungen', () => {
+  const g = auctionGame();
+  applyAction(g, 'p1', { type: 'skipBuy' });
+
+  assert.ok(applyAction(g, 'p1', { type: 'passAuction' }).ok);
+  assert.equal(applyAction(g, 'p1', { type: 'bid', amount: 500 }).ok, false, 'raus bleibt raus');
+
+  assert.ok(applyAction(g, 'p2', { type: 'bid', amount: 10 }).ok);
+  assert.ok(applyAction(g, 'p3', { type: 'bid', amount: 20 }).ok);
+  // p1 wird übersprungen, p2 ist wieder dran
+  assert.ok(applyAction(g, 'p2', { type: 'passAuction' }).ok);
+  assert.equal(g.properties[5].ownerId, 'p3');
+});
+
+test('Auktion: Bedenkzeit lässt einen stummen Bieter passen', () => {
+  const g = auctionGame();
+  g.rules.auctionBidSeconds = 30;
+  applyAction(g, 'p1', { type: 'skipBuy' });
+
+  const deadline = g.auction!.deadline!;
+  assert.ok(deadline > Date.now(), 'Uhr läuft');
+  assert.equal(auctionTick(g, deadline - 1), false, 'vorher passiert nichts');
+
+  assert.equal(auctionTick(g, deadline + 1), true);
+  assert.deepEqual(g.auction?.passed, ['p1'], 'p1 hat die Zeit verstreichen lassen');
+  assert.equal(auctionBidderId(g), 'p2');
+});
+
+test('Auktion: Handel ist währenddessen gesperrt', () => {
+  const g = auctionGame();
+  applyAction(g, 'p1', { type: 'skipBuy' });
+
+  const r = applyAction(g, 'p2', {
+    type: 'proposeTrade',
+    to: 'p3',
+    offerMoney: 10,
+    offerProps: [],
+    requestMoney: 0,
+    requestProps: [],
+  });
+  assert.equal(r.ok, false);
+  assert.match(r.error ?? '', /Auktion/);
+});
+
+test('Auktion: Bankrott während der Auktion nimmt den Spieler heraus', () => {
+  const g = auctionGame(4);
+  applyAction(g, 'p1', { type: 'skipBuy' });
+  assert.ok(applyAction(g, 'p1', { type: 'bid', amount: 30 }).ok);
+
+  // p2 steigt aus, während er am Zug wäre
+  assert.ok(applyAction(g, 'p2', { type: 'resign' }).ok);
+  assert.ok(g.auction?.passed.includes('p2'), 'ausgeschiedener Bieter ist raus');
+  assert.equal(auctionBidderId(g), 'p3');
+});
+
+test('Auktion: unbezahlbares Feld führt über denselben Knopf in die Auktion', () => {
+  const g = auctionGame();
+  getPlayer(g, 'p1')!.money = 10; // kann den Südbahnhof (200) nicht kaufen
+
+  assert.equal(applyAction(g, 'p1', { type: 'buy' }).ok, false);
+  assert.ok(applyAction(g, 'p1', { type: 'skipBuy' }).ok);
+  assert.equal(g.turnPhase, 'auction', 'auch der Zahlungsunfähige löst die Auktion aus');
 });

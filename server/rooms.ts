@@ -22,6 +22,9 @@ import {
   rerollAppearance,
   resetToLobby,
   startGame,
+  auctionBidderId,
+  auctionTick,
+  nextDeadline as monopolyNextDeadline,
 } from '../shared/engine';
 import { getPreset, RULE_PRESETS } from '../shared/rules';
 import { randomId, randomRoomCode, PLAYER_COLORS } from '../shared/util';
@@ -66,7 +69,8 @@ interface Room {
   /** memberId → verbundene Sockets */
   sockets: Map<string, Set<Socket>>;
   lastActivity: number;
-  pokerTimer: NodeJS.Timeout | null;
+  /** Bedenkzeit-Uhr des Raums (Poker-Zug bzw. Auktions-Gebot) */
+  timer: NodeJS.Timeout | null;
 }
 
 const rooms = new Map<string, Room>();
@@ -125,54 +129,83 @@ function broadcast(io: Server, room: Room): void {
       const env = envelopeFor(room, memberId);
       for (const s of socks) s.emit('state', env);
     }
-    schedulePokerTimer(io, room);
+    scheduleRoomTimer(io, room);
   } else {
     io.to(room.code).emit('state', envelopeFor(room, null));
+    scheduleRoomTimer(io, room);
   }
   broadcastLobbyRooms(io);
 }
 
 // ---------------------------------------------------------------------------
-// Poker-Timer (Bedenkzeit, Auto-Fold, nächste Hand)
+// Raum-Timer (Poker-Bedenkzeit, Auktions-Bedenkzeit)
 // ---------------------------------------------------------------------------
 
 /** Getrennte Spieler bekommen nur eine kurze Gnadenfrist statt der vollen Bedenkzeit. */
 const DISCONNECTED_GRACE_MS = 5000;
 
-function schedulePokerTimer(io: Server, room: Room): void {
-  if (room.pokerTimer) {
-    clearTimeout(room.pokerTimer);
-    room.pokerTimer = null;
-  }
+/** Nächste Frist des Raums, oder null wenn gerade keine Uhr läuft. */
+function roomDeadline(room: Room): number | null {
   const p = room.poker;
-  if (!p || p.phase !== 'playing') return;
-
-  let at: number | null = null;
-  if (p.street === 'showdown' && p.nextHandAt !== null) {
-    at = p.nextHandAt;
-  } else if (p.toActIndex !== null && p.actionDeadline !== null) {
-    const actor = p.players[p.toActIndex];
-    if (actor && !actor.connected) {
-      p.actionDeadline = Math.min(p.actionDeadline, Date.now() + DISCONNECTED_GRACE_MS);
+  if (p && p.phase === 'playing') {
+    if (p.street === 'showdown' && p.nextHandAt !== null) return p.nextHandAt;
+    if (p.toActIndex !== null && p.actionDeadline !== null) {
+      const actor = p.players[p.toActIndex];
+      if (actor && !actor.connected) {
+        p.actionDeadline = Math.min(p.actionDeadline, Date.now() + DISCONNECTED_GRACE_MS);
+      }
+      return p.actionDeadline;
     }
-    at = p.actionDeadline;
+    return null;
   }
+
+  const g = room.monopoly;
+  if (g && g.phase === 'playing') {
+    // Auktionen brauchen eine eigene Uhr: `forceEndTurn` wirkt nur auf den
+    // aktuellen Spieler und erreicht einen getrennten BIETER nicht – ohne
+    // Frist stünde die Auktion für alle still.
+    const at = monopolyNextDeadline(g);
+    if (at !== null) {
+      const bidder = g.auction ? getPlayer(g, auctionBidderId(g) ?? '') : undefined;
+      if (bidder && !bidder.connected && g.auction) {
+        g.auction.deadline = Math.min(at, Date.now() + DISCONNECTED_GRACE_MS);
+        return g.auction.deadline;
+      }
+      return at;
+    }
+  }
+  return null;
+}
+
+/** Lässt die Zeit im Raum weiterlaufen; true, wenn sich etwas geändert hat. */
+function roomTick(room: Room, now: number): boolean {
+  if (room.poker) return pokerTick(room.poker, now);
+  if (room.monopoly) return auctionTick(room.monopoly, now);
+  return false;
+}
+
+function scheduleRoomTimer(io: Server, room: Room): void {
+  if (room.timer) {
+    clearTimeout(room.timer);
+    room.timer = null;
+  }
+  const at = roomDeadline(room);
   if (at === null) return;
 
-  room.pokerTimer = setTimeout(() => {
-    room.pokerTimer = null;
+  room.timer = setTimeout(() => {
+    room.timer = null;
     if (rooms.get(room.code) !== room) return;
-    if (pokerTick(p, Date.now())) {
+    if (roomTick(room, Date.now())) {
       broadcast(io, room);
     } else {
-      schedulePokerTimer(io, room);
+      scheduleRoomTimer(io, room);
     }
   }, Math.max(50, at - Date.now()));
-  room.pokerTimer.unref?.();
+  room.timer.unref?.();
 }
 
 function deleteRoom(io: Server, room: Room): void {
-  if (room.pokerTimer) clearTimeout(room.pokerTimer);
+  if (room.timer) clearTimeout(room.timer);
   rooms.delete(room.code);
   broadcastLobbyRooms(io);
 }
@@ -402,7 +435,7 @@ export function registerHandlers(io: Server): void {
           secrets: new Map([[playerId, token]]),
           sockets: new Map(),
           lastActivity: Date.now(),
-          pokerTimer: null,
+          timer: null,
         };
 
         if (gameId === 'monopoly') {
@@ -595,6 +628,8 @@ export function registerHandlers(io: Server): void {
           if (typeof r.jailFine === 'number') rules.jailFine = clamp(r.jailFine, 0, 500);
           if (typeof r.freeParkingBonus === 'boolean') rules.freeParkingBonus = r.freeParkingBonus;
           if (typeof r.doubleRentFullGroup === 'boolean') rules.doubleRentFullGroup = r.doubleRentFullGroup;
+          if (typeof r.auctionOnSkip === 'boolean') rules.auctionOnSkip = r.auctionOnSkip;
+          if (typeof r.auctionBidSeconds === 'number') rules.auctionBidSeconds = clamp(r.auctionBidSeconds, 0, 120);
           if (typeof r.debugMode === 'boolean') rules.debugMode = r.debugMode;
         }
       }

@@ -37,7 +37,7 @@ LAN einfach `http://<deine-IP>:3001` an die Mitspieler geben. Port per `PORT`,
 Datenverzeichnis (Editionen/Spielstände) per `DATA_DIR` konfigurierbar.
 
 ```bash
-npm test                                 # Unit-Tests: Monopoly, Poker, lokaler Raum (55 Tests)
+npm test                                 # Unit-Tests: Monopoly, Poker, lokaler Raum (68 Tests)
 npm run typecheck
 npm run build && npm run test:e2e        # Browser-E2E: Monopoly (Playwright)
 npm run build && npm run test:e2e:poker  # Browser-E2E: Poker inkl. Karten-Redaction
@@ -163,6 +163,10 @@ das Skript nicht.
 
 - **2–8 Spieler**, Standardbrett mit 40 Feldern (Los, Gefängnis, Frei Parken, „Gehe ins Gefängnis“)
 - **Grundstückskauf** mit klassischen, steigenden Preisen (Badstraße → Schlossallee)
+- **Auktionen** (Regeloption): Wer den Kauf ausschlägt – oder ihn sich nicht leisten
+  kann – bringt das Grundstück unter den Hammer. Geboten wird reihum, bis nur noch
+  einer übrig ist; passen scheidet endgültig aus dieser Auktion aus. Ohne die Option
+  bleibt das Feld einfach unverkauft (bisheriges Verhalten, weiterhin Vorgabe).
 - **Miete** abhängig von Besitzstatus und Bebauung; Bahnhöfe gestaffelt (25/50/100/200),
   Werke nach Augenzahl (4×/10×), doppelte Grundmiete bei kompletter Farbgruppe (Regeloption)
 - **Häuser & Hotels** (1–4 Häuser, dann Hotel) mit Gleichmäßigkeits-Regel und
@@ -181,8 +185,8 @@ das Skript nicht.
   *Klassisch (Deutschland)*, *Berlin*, *München* und *USA (Atlantic City)*
 - **Farben** aller 8 Gruppen und des Bretts, **Bilder** für Brettmitte und Felder
   (Upload, clientseitig verkleinert, als Data-URL gespeichert)
-- **Regel-Presets**: *Originalversion*, *Schnelle Variante*, *Hardcore* –
-  in der Lobby weiter feinjustierbar
+- **Regel-Presets**: *Originalversion* (mit Auktionen), *Schnelle Variante* (ohne),
+  *Hardcore* (mit, kurze Bedenkzeit) – in der Lobby weiter feinjustierbar
 - **Spielstände speichern/laden** (JSON auf dem Server); nach dem Laden treten
   Mitspieler einfach mit ihrem alten Namen wieder bei
 - **Debug-Modus** (Lobby-Option): nächsten Würfelwurf setzen – für Tests
@@ -209,6 +213,12 @@ das Skript nicht.
 - **Anfänger-Hilfe**: Unter den eigenen Karten steht die aktuell beste Hand
 - **Karten bleiben geheim**: Der Server schickt jedem Client eine redigierte
   Sicht – fremde Hole Cards verlassen den Server erst beim Showdown
+
+Bewusste Vereinfachungen bei Auktionen (in `shared/engine.ts` dokumentiert):
+Geboten wird reihum statt offen und gleichzeitig – nur so lässt es sich gegen
+getrennte Spieler absichern, und nur so funktioniert es am geteilten Gerät.
+Und es wird höchstens das eigene Bargeld geboten; im Original dürfte man
+darüber hinausgehen und danach Häuser verkaufen.
 
 Bewusste Vereinfachungen (in `shared/poker/engine.ts` dokumentiert):
 Jede Erhöhung eröffnet die Setzrunde neu (auch kurze All-Ins), beim Showdown

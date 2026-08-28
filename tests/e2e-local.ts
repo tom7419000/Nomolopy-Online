@@ -73,9 +73,14 @@ async function setupLocalGame(page: Page, names: string[]): Promise<void> {
 /** Beendet den laufenden Monopoly-Zug, egal welche Phase ansteht. */
 async function finishTurn(page: Page): Promise<void> {
   const tap = (l: ReturnType<Page['locator']>) => l.click({ timeout: 2000 }).catch(() => {});
-  for (let i = 0; i < 12; i++) {
+  for (let i = 0; i < 20; i++) {
     if (await page.locator('.game-card').isVisible().catch(() => false)) {
       await tap(page.getByRole('button', { name: 'OK' }));
+    } else if (await page.locator('.auction-box').isVisible().catch(() => false)) {
+      // Das „Originalversion"-Preset versteigert ausgeschlagene Grundstücke.
+      // Am geteilten Gerät wandert die Identität zu jedem Bieter, also reicht
+      // wiederholtes Passen, bis die Auktion durch ist.
+      await tap(page.getByRole('button', { name: 'Passen' }));
     } else if (await page.getByRole('button', { name: 'Nicht kaufen' }).isVisible().catch(() => false)) {
       await tap(page.getByRole('button', { name: 'Nicht kaufen' }));
     } else if (

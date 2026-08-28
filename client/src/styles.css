@@ -1511,3 +1511,20 @@ button,
     padding-bottom: max(0px, env(safe-area-inset-bottom));
   }
 }
+
+/* --------------------------------------------------------------------------
+   Auktion (Regeloption „ausgeschlagene Grundstücke versteigern")
+   -------------------------------------------------------------------------- */
+
+.auction-box { border-color: #7a5c1f; background: linear-gradient(180deg, #2a2415, #241f13); }
+.auction-head { margin-bottom: 4px; }
+.auction-bid { margin: 6px 0 10px; font-size: 1.05rem; }
+.auction-controls {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.auction-controls .input.small { width: 100px; }
+.auction-passed { margin-top: 6px; }

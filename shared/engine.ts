@@ -7,7 +7,15 @@
  * die eigentliche Validierung passiert aber immer hier, serverseitig.
  *
  * Bewusste Vereinfachungen gegenüber dem Originalregelwerk (dokumentiert):
- * - Keine Auktion bei ausgeschlagenem Grundstückskauf.
+ * - Auktionen (Regeloption `auctionOnSkip`) laufen REIHUM statt offen und
+ *   gleichzeitig: Jeder erhöht der Reihe nach oder passt, bis einer übrig
+ *   bleibt. Das ist leichter zu modellieren, zu rendern und gegen getrennte
+ *   Spieler abzusichern – und es ist die einzige Form, die am geteilten
+ *   Gerät überhaupt funktioniert.
+ * - Geboten wird höchstens so viel, wie der Bieter bar hat. Im Original
+ *   dürfte er darüber hinausgehen und danach Häuser verkaufen oder
+ *   Hypotheken aufnehmen; mit dem Deckel kann der Gewinner immer zahlen,
+ *   was eine ganze Klasse von Folgezuständen erspart.
  * - Karten mit "zahle jedem Spieler" / "kassiere von jedem": Zahlungs-
  *   unfähige Spieler werden automatisch liquidiert (Häuser verkaufen,
  *   Hypotheken aufnehmen) statt in eine verschachtelte Schuldenphase zu gehen.
@@ -57,6 +65,7 @@ export function createGame(code: string, edition: BoardEdition, presetId: string
     pendingCard: null,
     debt: null,
     trade: null,
+    auction: null,
     freeParkingPot: 0,
     bankHouses: rules.houseLimit,
     bankHotels: rules.hotelLimit,
@@ -145,6 +154,7 @@ export function startGame(state: GameState): ActionResult {
   state.doubles = 0;
   state.debt = null;
   state.trade = null;
+  state.auction = null;
   state.pendingCard = null;
   state.winnerId = null;
   log(state, 'system', `Das Spiel beginnt! ${cur(state).name} fängt an.`);
@@ -158,6 +168,7 @@ export function resetToLobby(state: GameState): void {
   state.properties = {};
   state.debt = null;
   state.trade = null;
+  state.auction = null;
   state.pendingCard = null;
   state.dice = null;
   for (const p of state.players) {
@@ -747,6 +758,8 @@ function bankruptPlayer(state: GameState, player: Player, creditorId: string | n
   if (state.trade && (state.trade.fromId === player.id || state.trade.toId === player.id)) {
     state.trade = null;
   }
+  // Aus einer laufenden Auktion fällt der Bankrotteur einfach heraus.
+  if (state.auction) dropFromAuction(state, player.id);
 
   if (checkWinner(state)) return;
   if (cur(state).id === player.id && state.phase === 'playing') {
@@ -761,6 +774,7 @@ function checkWinner(state: GameState): boolean {
     state.winnerId = active[0].id;
     state.debt = null;
     state.trade = null;
+    state.auction = null;
     state.pendingCard = null;
     log(state, 'system', `🏆 ${active[0].name} gewinnt das Spiel!`, active[0].id);
     return true;
@@ -805,6 +819,11 @@ export function applyAction(state: GameState, playerId: string, action: GameActi
       return doRespondTrade(state, player, action.accept);
     case 'cancelTrade':
       return doCancelTrade(state, player);
+    // Bieter sind nicht der aktuelle Spieler – deshalb hier oben, wie beim Handel
+    case 'bid':
+      return doBid(state, player, action.amount);
+    case 'passAuction':
+      return doPassAuction(state, player);
     case 'setDice': {
       if (!state.rules.debugMode) return err('Debug-Modus ist deaktiviert.');
       const [a, b] = action.dice;
@@ -859,6 +878,15 @@ export function applyAction(state: GameState, playerId: string, action: GameActi
     default:
       return err('Unbekannte Aktion.');
   }
+}
+
+/**
+ * Erzwingt Vollständigkeit in Switches über eine Union. Ohne das schweigt
+ * TypeScript bei Anweisungs-Switches im void-Kontext – ein neuer Fall würde
+ * dort still nichts tun.
+ */
+function assertNever(x: never, what = 'Fall'): never {
+  throw new Error(`Unbehandelter ${what}: ${JSON.stringify(x)}`);
 }
 
 function requireTurn(state: GameState, player: Player): ActionResult | null {
@@ -953,8 +981,199 @@ function doSkipBuy(state: GameState, player: Player): ActionResult {
   if (state.turnPhase !== 'awaiting-buy') return err('Es steht kein Kauf an.');
   const tile = getTile(state, player.position);
   log(state, 'info', `${player.name} verzichtet auf den Kauf von ${tile.name}.`, player.id);
+  // Zweiter Einstieg neben dem freiwilligen Verzicht: Wer sich das Feld nicht
+  // leisten kann, landet über denselben Knopf hier – auch dann wird versteigert.
+  if (state.rules.auctionOnSkip) {
+    startAuction(state, tile.id);
+    return OK;
+  }
   state.turnPhase = 'awaiting-end';
   return OK;
+}
+
+// ---------------------------------------------------------------------------
+// Auktion (Regeloption `auctionOnSkip`)
+// ---------------------------------------------------------------------------
+
+/** Mindesterhöhung – hält Auktionen kurz, ohne 1er-Schritte zu erzwingen. */
+const MIN_BID_STEP = 1;
+
+/**
+ * Eröffnet die Versteigerung eines ausgeschlagenen Grundstücks.
+ *
+ * Bieter sind alle nicht bankrotten Spieler, beginnend beim aktuellen –
+ * das entspricht dem Original, wo der Ausschlagende mitbieten darf.
+ */
+function startAuction(state: GameState, tileId: number): void {
+  const order: string[] = [];
+  const n = state.players.length;
+  for (let i = 0; i < n; i++) {
+    const p = state.players[(state.currentPlayer + i) % n];
+    if (!p.bankrupt) order.push(p.id);
+  }
+
+  state.auction = {
+    id: randomId(8),
+    tileId,
+    order,
+    turnIndex: 0,
+    passed: [],
+    highBid: 0,
+    highBidderId: null,
+    deadline: auctionDeadline(state),
+  };
+  state.turnPhase = 'auction';
+  log(
+    state,
+    'info',
+    `🔨 ${getTile(state, tileId).name} kommt unter den Hammer – wer bietet?`
+  );
+}
+
+function auctionDeadline(state: GameState): number | null {
+  const secs = state.rules.auctionBidSeconds;
+  return secs > 0 ? Date.now() + secs * 1000 : null;
+}
+
+/** Wer ist mit Bieten dran? `null`, wenn die Auktion vorbei ist. */
+export function auctionBidderId(state: GameState): string | null {
+  const a = state.auction;
+  if (!a) return null;
+  return a.order[a.turnIndex] ?? null;
+}
+
+/** Höchstgebot, das ein Spieler abgeben darf: sein Bargeld (siehe Kopfkommentar). */
+export function maxBid(state: GameState, playerId: string): number {
+  return getPlayer(state, playerId)?.money ?? 0;
+}
+
+/** Mindestgebot, um das aktuelle Höchstgebot zu überbieten. */
+export function minBid(state: GameState): number {
+  return (state.auction?.highBid ?? 0) + MIN_BID_STEP;
+}
+
+/** Schaltet auf den nächsten Bieter weiter, der noch nicht gepasst hat. */
+function nextBidder(state: GameState): void {
+  const a = state.auction;
+  if (!a) return;
+  for (let i = 1; i <= a.order.length; i++) {
+    const idx = (a.turnIndex + i) % a.order.length;
+    if (!a.passed.includes(a.order[idx])) {
+      a.turnIndex = idx;
+      a.deadline = auctionDeadline(state);
+      return;
+    }
+  }
+}
+
+/** Nimmt einen Spieler aus der laufenden Auktion (Bankrott, Rauswurf). */
+function dropFromAuction(state: GameState, playerId: string): void {
+  const a = state.auction;
+  if (!a || a.passed.includes(playerId)) return;
+  a.passed.push(playerId);
+  if (a.highBidderId === playerId) {
+    // Das Gebot eines Ausgeschiedenen verfällt.
+    a.highBidderId = null;
+    a.highBid = 0;
+  }
+  if (settleAuctionIfDone(state)) return;
+  // War er gerade mit Bieten dran, rückt der Nächste nach.
+  if (a.order[a.turnIndex] === playerId) nextBidder(state);
+}
+
+/**
+ * Beendet die Auktion, sobald höchstens ein Bieter übrig ist.
+ * Gibt zurück, ob sie beendet wurde.
+ */
+function settleAuctionIfDone(state: GameState): boolean {
+  const a = state.auction;
+  if (!a) return false;
+  const remaining = a.order.filter((id) => !a.passed.includes(id));
+  if (remaining.length > 1) return false;
+  // Ist einer übrig, der noch gar nicht geboten hat, bekommt er erst seine
+  // Gelegenheit – sonst ginge das Feld unverkauft an ihm vorbei.
+  if (remaining.length === 1 && a.highBidderId !== remaining[0]) return false;
+
+  const tile = getTile(state, a.tileId);
+  const winnerId = remaining.length === 1 && a.highBidderId === remaining[0] ? remaining[0] : null;
+
+  if (winnerId && a.highBid > 0) {
+    const winner = getPlayer(state, winnerId)!;
+    winner.money -= a.highBid;
+    state.properties[a.tileId].ownerId = winnerId;
+    log(
+      state,
+      'money',
+      `🔨 ${winner.name} ersteigert ${tile.name} für ${money(state, a.highBid)}.`,
+      winnerId
+    );
+  } else {
+    log(state, 'info', `🔨 Niemand bietet auf ${tile.name} – es bleibt unverkauft.`);
+  }
+
+  state.auction = null;
+  // Der Zug des aktuellen Spielers geht ganz normal weiter.
+  state.turnPhase = 'awaiting-end';
+  return true;
+}
+
+function doBid(state: GameState, player: Player, amount: number): ActionResult {
+  const a = state.auction;
+  if (!a) return err('Es läuft gerade keine Auktion.');
+  if (auctionBidderId(state) !== player.id) return err('Du bist nicht mit Bieten dran.');
+
+  const bid = Math.floor(amount);
+  if (!Number.isFinite(bid)) return err('Ungültiges Gebot.');
+  if (bid < minBid(state)) {
+    return err(`Mindestens ${money(state, minBid(state))} bieten.`);
+  }
+  if (bid > maxBid(state, player.id)) {
+    return err('So viel Bargeld hast du nicht.');
+  }
+
+  a.highBid = bid;
+  a.highBidderId = player.id;
+  log(state, 'info', `${player.name} bietet ${money(state, bid)}.`, player.id);
+  nextBidder(state);
+  settleAuctionIfDone(state);
+  return OK;
+}
+
+function doPassAuction(state: GameState, player: Player): ActionResult {
+  const a = state.auction;
+  if (!a) return err('Es läuft gerade keine Auktion.');
+  if (auctionBidderId(state) !== player.id) return err('Du bist nicht mit Bieten dran.');
+
+  a.passed.push(player.id);
+  log(state, 'info', `${player.name} passt.`, player.id);
+  if (!settleAuctionIfDone(state)) nextBidder(state);
+  return OK;
+}
+
+/**
+ * Zeitgesteuerter Fortschritt: Wer die Bedenkzeit verstreichen lässt, passt.
+ * Gibt zurück, ob sich der Zustand geändert hat (dann neu broadcasten).
+ *
+ * Nötig, weil `doForceEndTurn` nur auf den aktuellen Spieler wirkt – ein
+ * getrennter BIETER wäre außerhalb seiner Reichweite und würde die Auktion
+ * für alle einfrieren.
+ */
+export function auctionTick(state: GameState, now = Date.now()): boolean {
+  const a = state.auction;
+  if (!a || a.deadline === null || now < a.deadline) return false;
+  const bidder = auctionBidderId(state);
+  if (!bidder) return false;
+  const p = getPlayer(state, bidder);
+  if (!p) return false;
+  log(state, 'info', `⏱ ${p.name} lässt die Bedenkzeit verstreichen und passt.`, p.id);
+  a.passed.push(bidder);
+  if (!settleAuctionIfDone(state)) nextBidder(state);
+  return true;
+}
+
+/** Nächste Frist der Monopoly-Engine (heute nur Auktionen). */
+export function nextDeadline(state: GameState): number | null {
+  return state.auction?.deadline ?? null;
 }
 
 function doEndTurn(state: GameState, player: Player): ActionResult {
@@ -1131,6 +1350,7 @@ function doProposeTrade(
   if (state.phase !== 'playing') return err('Das Spiel läuft nicht.');
   if (player.bankrupt) return err('Du bist ausgeschieden.');
   if (state.trade) return err('Es läuft bereits ein Handelsangebot.');
+  if (state.auction) return err('Erst muss die Auktion zu Ende gehen.');
   if (state.debt) return err('Erst müssen die offenen Schulden geklärt werden.');
   if (action.to === player.id) return err('Du kannst nicht mit dir selbst handeln.');
   const offerMoney = Math.max(0, Math.floor(action.offerMoney || 0));
@@ -1248,6 +1468,16 @@ function doForceEndTurn(state: GameState, requester: Player): ActionResult {
         doEndTurn(state, p);
         break;
       }
+      case 'auction': {
+        // Der aktuelle Spieler ist hier nicht zwingend der Bieter. Für ihn
+        // passen, den Rest erledigt die Bedenkzeit (auctionTick).
+        const bidder = auctionBidderId(state);
+        if (bidder === p.id) doPassAuction(state, p);
+        else return OK;
+        break;
+      }
+      default:
+        assertNever(state.turnPhase, 'Zugphase');
     }
   }
   return OK;

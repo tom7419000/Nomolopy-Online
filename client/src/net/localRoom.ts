@@ -16,6 +16,7 @@ import {
   addChat,
   addPlayer,
   applyAction,
+  auctionBidderId,
   createGame,
   resetToLobby,
   startGame,
@@ -129,6 +130,10 @@ export function activeSeatId(room: LocalRoom): string | null {
   const g = room.monopoly;
   if (g) {
     if (g.phase !== 'playing') return null;
+    // Während einer Auktion bietet reihum jemand anderes als der Spieler,
+    // der am Zug ist – ohne diesen Zweig würden alle Gebote dem aktuellen
+    // Spieler zugeschrieben.
+    if (g.auction) return auctionBidderId(g);
     // Ein offenes Handelsangebot kann NUR der Empfänger beantworten
     // (`doRespondTrade` prüft das). Bliebe die Identität beim Anbieter,
     // ließe sich der Handel am gemeinsamen Gerät nie abschließen – und das
@@ -215,6 +220,9 @@ export class LocalRoomRunner {
     if (this.stopped) return;
     // Die Zug-Uhr gilt am gemeinsamen Gerät nicht: ein Auto-Fold, weil das
     // Tablet gerade weitergereicht wird, wäre die falsche Strafe.
+    // Am gemeinsamen Gerät kann sich niemand „trennen", und ein Auto-Pass
+    // beim Weiterreichen wäre die falsche Strafe.
+    if (this.room.monopoly?.auction) this.room.monopoly.auction.deadline = null;
     if (this.room.poker) {
       this.room.poker.actionDeadline = null;
       // Neun Sekunden reichen online, wo jeder auf seinen Bildschirm schaut.

@@ -96,6 +96,20 @@ export const useStore = create<AppStore>((set, get) => ({
         // „du" wäre für alle am Tisch mehrdeutig.
         addToast('turn', session.mode === 'local' ? `👉 ${nowCurrent.name} ist dran` : '🎲 Du bist dran!');
       }
+      // Neue Auktion? Der Vergleich über die id feuert einmal pro Auktion
+      // statt bei jedem Broadcast – dasselbe Muster wie beim Handel.
+      if (game.auction && prevGame?.auction?.id !== game.auction.id) {
+        const tile = game.edition.tiles[game.auction.tileId];
+        addToast('info', `🔨 ${tile?.name ?? 'Ein Grundstück'} wird versteigert.`);
+      } else if (
+        game.auction &&
+        prevGame?.auction &&
+        game.auction.highBidderId !== prevGame.auction.highBidderId &&
+        prevGame.auction.highBidderId === session.playerId
+      ) {
+        addToast('info', '🔨 Du wurdest überboten.');
+      }
+
       const newTradeForMe =
         game.trade && game.trade.toId === session.playerId && prevGame?.trade?.id !== game.trade.id;
       if (newTradeForMe) {

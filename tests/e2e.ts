@@ -60,10 +60,24 @@ async function waitForServer(): Promise<void> {
  * Buttons oft, bevor Playwright den Klick verifizieren kann – die Schleife
  * bewertet den Zustand danach ohnehin neu.
  */
-async function finishTurn(page: Page): Promise<void> {
+async function finishTurn(page: Page, others: Page[] = []): Promise<void> {
   const tap = (locator: ReturnType<Page['locator']>) =>
     locator.click({ timeout: 2000 }).catch(() => {});
-  for (let i = 0; i < 12; i++) {
+  for (let i = 0; i < 20; i++) {
+    // Auktionen zuerst, und über ALLE Seiten: Dabei handelt reihum jeder
+    // Spieler, nicht nur der, der am Zug ist. Würde hier nur `page` passen,
+    // bliebe die Auktion beim nächsten Bieter stehen und der Zug endete nie.
+    let bidding = false;
+    for (const p of [page, ...others]) {
+      if (await p.getByRole('button', { name: 'Passen' }).isVisible().catch(() => false)) {
+        await tap(p.getByRole('button', { name: 'Passen' }));
+        bidding = true;
+      }
+    }
+    if (bidding) {
+      await page.waitForTimeout(250);
+      continue;
+    }
     const mine = await page
       .locator('.turn-banner.mine')
       .isVisible()
@@ -216,15 +230,51 @@ async function main() {
     await first.screenshot({ path: `${SHOTS}/04-property.png` });
     await first.getByLabel('Schließen').click();
 
-    // --- Ereigniskarte ziehen (Feld 7) -------------------------------------
-    await setDice(first, 1, 1); // 5 → 7 (Ereignisfeld), inkl. Pasch
+    // --- Auktion: Kauf ausschlagen, beide bieten, Zuschlag prüfen ---------
+    // Das „Originalversion"-Preset versteigert ausgeschlagene Grundstücke.
+    // `first` steht hier sicher auf Feld 5, also ist das Ziel bestimmbar.
+    await setDice(first, 2, 4); // 5 → 11 (Seestraße, 100), kein Pasch
+    await first.getByRole('button', { name: '🎲 Würfeln' }).click();
+    await first.getByRole('button', { name: 'Nicht kaufen' }).click();
+
+    // Beide Seiten sehen die Auktion; der Ausschlagende bietet zuerst
+    await first.locator('.auction-box').waitFor();
+    await second.locator('.auction-box').waitFor();
+    await first.getByLabel('Gebot').fill('60');
+    await first.getByRole('button', { name: /bieten/ }).click();
+
+    // Jetzt ist der andere dran und überbietet
+    await second.getByLabel('Gebot').waitFor();
+    await second.getByLabel('Gebot').fill('90');
+    await second.getByRole('button', { name: /bieten/ }).click();
+
+    // Der erste Bieter passt → Zuschlag an den Höchstbietenden
+    await first.getByRole('button', { name: 'Passen' }).click();
+    await first.locator('.auction-box').waitFor({ state: 'hidden' });
+    await first.locator('.log-entry', { hasText: 'ersteigert' }).first().waitFor();
+    await second.locator('.log-entry', { hasText: 'ersteigert' }).first().waitFor();
+    // Der Ersteigerer hat 90 bezahlt: 1.475 − 90 = 1.385
+    await first
+      .locator('.player-card', { hasText: secondName })
+      .locator('.player-money', { hasText: '1.385' })
+      .waitFor();
+    await first.screenshot({ path: `${SHOTS}/06-auction.png` });
+    console.log(`✔ Auktion: ${secondName} überbietet und ersteigert die Seestraße für 90`);
+
+    // Zug von `first` normal zu Ende bringen, dann ist `second` dran
+    await first.getByRole('button', { name: '✔ Zug beenden' }).click();
+    await finishTurn(second, [first]);
+    await first.locator('.turn-banner.mine').waitFor();
+
+    // --- Ereigniskarte ziehen (Feld 22) ------------------------------------
+    await setDice(first, 5, 6); // 11 → 22 (Ereignisfeld), kein Pasch
     await first.getByRole('button', { name: '🎲 Würfeln' }).click();
     await first.locator('.game-card').waitFor();
     await first.screenshot({ path: `${SHOTS}/05-card.png` });
     await first.getByRole('button', { name: 'OK' }).click();
     await first.locator('.game-card').waitFor({ state: 'hidden' });
     console.log('✔ Ereigniskarte gezogen und bestätigt');
-    await finishTurn(first);
+    await finishTurn(first, [second]);
 
     // --- Chat -------------------------------------------------------------
     await pageB.getByRole('button', { name: /Chat/ }).click();

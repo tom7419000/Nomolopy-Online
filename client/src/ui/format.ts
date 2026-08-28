@@ -42,6 +42,8 @@ export function phaseLabel(phase: TurnPhase, name: string, isMe: boolean): strin
       return isMe ? 'Deine Karte!' : `${name} liest eine Karte …`;
     case 'awaiting-end':
       return isMe ? 'Freie Aktionen – dann Zug beenden.' : `${name} ist am Zug.`;
+    case 'auction':
+      return '🔨 Versteigerung läuft …';
     case 'debt':
       return isMe ? 'Du musst Schulden begleichen!' : `${name} muss Geld beschaffen …`;
   }

@@ -63,6 +63,13 @@ export interface RuleSet {
   freeParkingBonus: boolean;
   /** Doppelte Grundmiete bei vollständiger, unbebauter Farbgruppe */
   doubleRentFullGroup: boolean;
+  /**
+   * Originalregel: Wer den Kauf ausschlägt, löst eine Versteigerung unter
+   * allen Spielern aus. Ausgeschaltet bleibt das Feld schlicht unverkauft.
+   */
+  auctionOnSkip: boolean;
+  /** Bedenkzeit pro Gebot in Sekunden (0 = keine Uhr, z. B. am geteilten Gerät) */
+  auctionBidSeconds: number;
   jailFine: number;
   maxJailTurns: number;
   /** Zinsaufschlag beim Aufheben einer Hypothek (z. B. 0.1 = 10 %) */
@@ -126,6 +133,7 @@ export type TurnPhase =
   | 'awaiting-roll' // aktueller Spieler muss würfeln
   | 'awaiting-buy' // Kaufentscheidung für das Feld, auf dem er steht
   | 'awaiting-card' // gezogene Karte muss bestätigt werden
+  | 'auction' // ausgeschlagenes Grundstück wird reihum versteigert
   | 'awaiting-end' // freie Aktionen (bauen, handeln, …), dann Zug beenden
   | 'debt'; // Spieler muss Schulden begleichen oder Bankrott erklären
 
@@ -141,6 +149,27 @@ export interface Debt {
   reason: string;
   /** Fortsetzung nach Bezahlung (z. B. Gefängnis verlassen und ziehen) */
   then?: { kind: 'jailRelease'; total: number };
+}
+
+/**
+ * Versteigerung eines ausgeschlagenen Grundstücks. Geboten wird REIHUM –
+ * das passt auf die vorhandene „wer ist dran"-Maschinerie und funktioniert
+ * auch am geteilten Gerät, wo gleichzeitiges Bieten gar nicht ginge.
+ */
+export interface Auction {
+  /** Wie bei TradeOffer nur da, damit der Client zwei Auktionen unterscheiden kann */
+  id: string;
+  tileId: number;
+  /** Bieter in Zugreihenfolge, beginnend beim aktuellen Spieler */
+  order: string[];
+  /** Index in `order` – wer ist mit Bieten dran */
+  turnIndex: number;
+  /** Wer schon gepasst hat (scheidet für den Rest der Auktion aus) */
+  passed: string[];
+  highBid: number;
+  highBidderId: string | null;
+  /** Auto-Pass für getrennte Bieter; null = keine Uhr */
+  deadline: number | null;
 }
 
 export interface TradeOffer {
@@ -195,6 +224,7 @@ export interface GameState {
   pendingCard: PendingCard | null;
   debt: Debt | null;
   trade: TradeOffer | null;
+  auction: Auction | null;
   freeParkingPot: number;
   bankHouses: number;
   bankHotels: number;
@@ -230,6 +260,8 @@ export type GameAction =
     }
   | { type: 'respondTrade'; accept: boolean }
   | { type: 'cancelTrade' }
+  | { type: 'bid'; amount: number }
+  | { type: 'passAuction' }
   | { type: 'setDice'; dice: [number, number] } // nur debugMode
   | { type: 'forceEndTurn' } // Host: Zug eines getrennten Spielers abschließen
   | { type: 'removePlayer'; targetId: string }; // Host

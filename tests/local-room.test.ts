@@ -277,3 +277,48 @@ test('stop() räumt den Poker-Takt ab', () => {
   runner.publish();
   assert.equal(published.length, count, 'nach stop() wird nichts mehr veröffentlicht');
 });
+
+test('Auktion: der aktive Sitz wandert zum Bieter, nicht zum Spieler am Zug', () => {
+  const room = monopolyRoom(['Anna', 'Ben', 'Clara']);
+  room.monopoly!.rules.auctionOnSkip = true;
+  room.monopoly!.rules.debugMode = true;
+  const { runner } = runnerFor(room);
+  runner.start();
+
+  const g = room.monopoly!;
+  g.currentPlayer = 0;
+  g.turnPhase = 'awaiting-roll';
+
+  runner.action({ type: 'setDice', dice: [2, 3] });
+  runner.action({ type: 'roll' });
+  assert.equal(g.turnPhase, 'awaiting-buy');
+
+  const atTurn = g.players[g.currentPlayer].id;
+  runner.action({ type: 'skipBuy' });
+  assert.equal(g.turnPhase, 'auction');
+
+  // Erster Bieter ist der Spieler am Zug …
+  assert.equal(activeSeatId(room), atTurn);
+  // … nach seinem Gebot rückt der Nächste nach, obwohl der Zug bei ihm bleibt.
+  runner.action({ type: 'bid', amount: 20 });
+  assert.notEqual(activeSeatId(room), atTurn, 'das Gerät wandert zum nächsten Bieter');
+  assert.equal(g.players[g.currentPlayer].id, atTurn, 'der Zug selbst bleibt bei Anna');
+});
+
+test('Auktion: am geteilten Gerät läuft keine Bedenkzeit', () => {
+  const room = monopolyRoom(['Anna', 'Ben', 'Clara']);
+  room.monopoly!.rules.auctionOnSkip = true;
+  room.monopoly!.rules.auctionBidSeconds = 30;
+  room.monopoly!.rules.debugMode = true;
+  const { runner } = runnerFor(room);
+  runner.start();
+
+  const g = room.monopoly!;
+  g.currentPlayer = 0;
+  g.turnPhase = 'awaiting-roll';
+  runner.action({ type: 'setDice', dice: [2, 3] });
+  runner.action({ type: 'roll' });
+  runner.action({ type: 'skipBuy' });
+
+  assert.equal(g.auction?.deadline, null, 'kein Auto-Pass beim Weiterreichen');
+});
