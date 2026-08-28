@@ -4,6 +4,7 @@ import { computeRent } from '@shared/engine';
 import { money, softHyphenate, tileIcon } from '../../ui/format';
 import { tileCenterPct, tileGridPos, tileSide, tokenOffset } from '../../ui/layout';
 import { useStore } from '../../state/store';
+import { useRotatedStyle } from '../../hooks/useRotatedStyle';
 
 /**
  * Figuren laufen Feld für Feld: Wir halten pro Spieler eine "angezeigte"
@@ -175,6 +176,7 @@ function TokenLayer({ game }: { game: GameState }) {
 }
 
 export function Board({ game }: { game: GameState }) {
+  const rotated = useRotatedStyle();
   const openDialog = useStore((s) => s.openDialog);
   const current = game.players[game.currentPlayer];
   const lastLog = game.log.length ? game.log[game.log.length - 1] : null;
@@ -185,7 +187,13 @@ export function Board({ game }: { game: GameState }) {
   return (
     <div
       className="board"
-      style={{ '--board-color': game.edition.boardColor, ...groupVars } as React.CSSProperties}
+      style={
+        {
+          '--board-color': game.edition.boardColor,
+          ...groupVars,
+          ...rotated,
+        } as React.CSSProperties
+      }
     >
       <div className="board-grid">
         {game.edition.tiles.map((t) => (

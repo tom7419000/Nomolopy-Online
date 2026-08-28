@@ -7,10 +7,13 @@
  * übersehen kann – deshalb ein dauerhaftes Band statt eines Toasts.
  */
 
-import { useStore } from '../state/store';
+import { useStore, useSeatRotation } from '../state/store';
 
 export function TurnBanner() {
   const isLocalGame = useStore((s) => s.session?.mode === 'local');
+  // Bei festen Plätzen ist das Band die Ansage an eine bestimmte Person –
+  // also dreht es sich zu ihr, genau wie das Brett darunter.
+  const rotation = useSeatRotation();
   const game = useStore((s) => s.game);
   const poker = useStore((s) => s.poker);
 
@@ -39,14 +42,19 @@ export function TurnBanner() {
   if (!name) return null;
 
   return (
-    <div className="pass-banner" style={{ borderColor: color }} role="status" aria-live="polite">
+    <div
+      className="pass-banner"
+      style={{ borderColor: color, transform: rotation ? `rotate(${rotation}deg)` : undefined }}
+      role="status"
+      aria-live="polite"
+    >
       <span className="pass-banner-token" style={{ background: color }} aria-hidden>
         {hint}
       </span>
       <strong>{name}</strong>
       <span>ist dran</span>
       <span className="pass-banner-pass" aria-hidden>
-        📱 weitergeben
+        {rotation ? '🪑 dein Platz' : '📱 weitergeben'}
       </span>
     </div>
   );

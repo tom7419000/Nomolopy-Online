@@ -13,7 +13,10 @@ import {
   activeSeatId,
   buildEnvelope,
   createLocalRoom,
+  defaultEdges,
   LocalRoomRunner,
+  MAX_FIXED_SEATS,
+  rotationFor,
   type LocalRoom,
 } from '../client/src/net/localRoom';
 import { HIDDEN_CARD, pokerTick } from '../shared/poker/engine';
@@ -321,4 +324,107 @@ test('Auktion: am geteilten Gerät läuft keine Bedenkzeit', () => {
   runner.action({ type: 'skipBuy' });
 
   assert.equal(g.auction?.deadline, null, 'kein Auto-Pass beim Weiterreichen');
+});
+
+// ---------------------------------------------------------------------------
+// Sitzordnung (feste Plätze)
+// ---------------------------------------------------------------------------
+
+test('Weiterreichen ist die Vorgabe – keine Sitzordnung, keine Drehung', () => {
+  const room = monopolyRoom();
+  assert.equal(room.seating, null);
+  assert.equal(rotationFor(room.seating, room.monopoly!.players[0].id), 0);
+});
+
+test('Feste Plätze: jeder Sitz bekommt eine eigene Kante', () => {
+  const room = createLocalRoom({
+    gameId: 'monopoly',
+    players: ['Anna', 'Ben', 'Clara', 'Dora'],
+    seatMode: 'fixed',
+  });
+
+  assert.equal(room.seating?.mode, 'fixed');
+  const edges = Object.values(room.seating!.edges);
+  assert.equal(edges.length, 4);
+  assert.equal(new Set(edges).size, 4, 'vier Spieler, vier verschiedene Kanten');
+});
+
+test('Feste Plätze: zwei Spieler sitzen sich gegenüber', () => {
+  const room = createLocalRoom({
+    gameId: 'monopoly',
+    players: ['Anna', 'Ben'],
+    seatMode: 'fixed',
+  });
+  const [a, b] = room.monopoly!.players.map((p) => room.seating!.edges[p.id]);
+  assert.deepEqual([a, b], [0, 180], 'unten und oben, nicht über Eck');
+});
+
+test('Feste Plätze: eigene Kantenwahl schlägt die Vorbelegung', () => {
+  const room = createLocalRoom({
+    gameId: 'monopoly',
+    players: ['Anna', 'Ben', 'Clara'],
+    seatMode: 'fixed',
+    seatEdges: [90, 270, 0],
+  });
+  const ids = room.monopoly!.players.map((p) => p.id);
+  assert.equal(room.seating!.edges[ids[0]], 90);
+  assert.equal(room.seating!.edges[ids[1]], 270);
+  assert.equal(room.seating!.edges[ids[2]], 0);
+});
+
+test('Der Drehwinkel folgt dem Sitz, der gerade handelt', () => {
+  const room = createLocalRoom({
+    gameId: 'monopoly',
+    players: ['Anna', 'Ben', 'Clara', 'Dora'],
+    seatMode: 'fixed',
+  });
+  const { runner } = runnerFor(room);
+  runner.start();
+
+  const g = room.monopoly!;
+  for (let i = 0; i < g.players.length; i++) {
+    g.currentPlayer = i;
+    const seat = activeSeatId(room)!;
+    assert.equal(
+      rotationFor(room.seating, seat),
+      room.seating!.edges[g.players[i].id],
+      `Spieler ${i} bekommt seine eigene Kante`
+    );
+  }
+});
+
+test('rotationFor liefert 0, solange niemand handelt', () => {
+  const room = createLocalRoom({
+    gameId: 'monopoly',
+    players: ['Anna', 'Ben'],
+    seatMode: 'fixed',
+  });
+  assert.equal(activeSeatId(room), null, 'in der Lobby handelt niemand');
+  assert.equal(rotationFor(room.seating, null), 0);
+});
+
+test('defaultEdges verteilt auch mehr Spieler als Kanten ohne Absturz', () => {
+  const ids = ['a', 'b', 'c', 'd', 'e', 'f'];
+  const edges = defaultEdges(ids);
+  assert.equal(Object.keys(edges).length, 6);
+  // Bei mehr als vier teilen sich Spieler eine Kante – dafür begrenzt die UI
+  // die Auswahl, hier darf es trotzdem nicht knallen.
+  assert.ok(MAX_FIXED_SEATS === 4);
+});
+
+test('Feste Plätze überleben einen Neuaufbau des Raums (Persistenz-Form)', () => {
+  const room = createLocalRoom({
+    gameId: 'poker',
+    players: ['Anna', 'Ben', 'Clara'],
+    seatMode: 'fixed',
+    pokerRules: { buyIn: 1000, smallBlind: 10, blindIncreaseMinutes: 0 },
+  });
+
+  // So legt local.ts den Stand ab und baut ihn wieder auf.
+  const stored = JSON.parse(JSON.stringify({ seating: room.seating }));
+  const restored: LocalRoom = { ...room, seating: stored.seating };
+
+  assert.deepEqual(restored.seating, room.seating);
+  const seat = room.poker!.players[1].id;
+  assert.equal(rotationFor(restored.seating, seat), room.seating!.edges[seat]);
 });

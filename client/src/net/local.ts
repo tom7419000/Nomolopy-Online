@@ -13,15 +13,23 @@ import type { GameState } from '@shared/types';
 import { useStore } from '../state/store';
 import { LOCAL_GAME_KEY, setMode } from './mode';
 import { resumeSocket, suspendSocket } from './socket';
-import { createLocalRoom, LocalRoomRunner, type LocalRoom } from './localRoom';
+import {
+  createLocalRoom,
+  LocalRoomRunner,
+  rotationFor,
+  type LocalRoom,
+  type LocalSeating,
+  type SeatEdge,
+} from './localRoom';
 
-const STORE_VERSION = 1;
+const STORE_VERSION = 2;
 
 interface StoredLocal {
   v: number;
   meta: LocalRoom['meta'];
   monopoly?: GameState;
   poker?: PokerState;
+  seating?: LocalSeating | null;
   savedAt: number;
 }
 
@@ -43,6 +51,7 @@ function persist(room: LocalRoom): void {
       v: STORE_VERSION,
       meta: room.meta,
       savedAt: Date.now(),
+      seating: room.seating,
       ...(room.monopoly ? { monopoly: room.monopoly } : {}),
       ...(room.poker ? { poker: room.poker } : {}),
     };
@@ -71,8 +80,12 @@ function readStored(): StoredLocal | null {
     const raw = localStorage.getItem(LOCAL_GAME_KEY);
     if (!raw) return null;
     const s = JSON.parse(raw) as StoredLocal;
-    if (s?.v !== STORE_VERSION || !s.meta) return null;
+    if (!s?.meta) return null;
     if (!s.monopoly && !s.poker) return null;
+    // v1 kannte noch keine Sitzordnung. Eine laufende Partie deswegen zu
+    // verwerfen wäre die schlechteste aller Antworten – also anheben.
+    if (s.v === 1) return { ...s, v: STORE_VERSION, seating: null };
+    if (s.v !== STORE_VERSION) return null;
     return s;
   } catch {
     return null;
@@ -103,6 +116,7 @@ function publish(room: LocalRoom, env: RoomEnvelope, seatId: string | null): voi
     name: seat?.name ?? '',
     mode: 'local',
   });
+  store.setSeating(room.seating, rotationFor(room.seating, seat?.id ?? null));
   store.setRoom(env);
   persist(room);
 }
@@ -133,6 +147,7 @@ function leaveLocalMode(): void {
   const store = useStore.getState();
   store.setRoom(null);
   store.setSession(null);
+  store.setSeating(null, 0);
   store.setConnected(false);
   resumeSocket();
 }
@@ -149,6 +164,8 @@ export interface StartLocalOptions {
   presetId?: string;
   pokerRules?: Partial<PokerRules>;
   editions?: BoardEdition[];
+  seatMode?: LocalSeating['mode'];
+  seatEdges?: SeatEdge[];
 }
 
 /** Legt eine lokale Partie an und startet sie sofort. */
@@ -176,6 +193,7 @@ export function restoreLocalGame(): boolean {
     meta: stored.meta,
     monopoly: stored.monopoly ?? null,
     poker: stored.poker ?? null,
+    seating: stored.seating ?? null,
   };
   enterLocalMode();
   attach(room).publish();

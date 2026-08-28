@@ -40,6 +40,8 @@ const TABLET = { width: 1180, height: 820 };
  * laufen ausschließlich innerhalb von page.waitForFunction().
  */
 declare const navigator: { serviceWorker: { controller: unknown } };
+declare const document: { querySelector(sel: string): unknown };
+declare const getComputedStyle: (el: unknown) => { getPropertyValue(p: string): string };
 
 function fail(msg: string): never {
   console.error(`❌ ${msg}`);
@@ -60,7 +62,12 @@ async function waitForServer(): Promise<void> {
 }
 
 /** Trägt die Namen in den Setup-Bildschirm ein und startet. */
-async function setupLocalGame(page: Page, names: string[]): Promise<void> {
+async function setupLocalGame(
+  page: Page,
+  names: string[],
+  seatMode: 'pass' | 'fixed' = 'pass'
+): Promise<void> {
+  if (seatMode === 'fixed') await page.getByRole('button', { name: /Feste Plätze/ }).click();
   for (let i = 2; i < names.length; i++) {
     await page.getByRole('button', { name: /Spieler hinzufügen/ }).click();
   }
@@ -68,6 +75,23 @@ async function setupLocalGame(page: Page, names: string[]): Promise<void> {
     await page.getByLabel(`Name Spieler ${i + 1}`).fill(names[i]);
   }
   await page.getByRole('button', { name: /Spiel starten/ }).click();
+}
+
+/**
+ * Liest die Ausrichtung des Bretts als Winkel in [0, 360).
+ *
+ * Der rohe Wert wird AUFSUMMIERT geführt, damit ein Wechsel von 270° auf 0°
+ * um +90° weiterdreht statt um −270° zurückzurauschen. Für den Vergleich
+ * zählt deshalb nur die Ausrichtung, nicht der Zählerstand: −90° und 270°
+ * zeigen in dieselbe Richtung.
+ */
+async function boardRotation(page: Page): Promise<number> {
+  const raw = await page.evaluate<string>(() => {
+    const el = document.querySelector('.board');
+    return el ? getComputedStyle(el).getPropertyValue('--seat-rotation').trim() : '0deg';
+  });
+  const deg = Number.parseFloat(raw) || 0;
+  return ((deg % 360) + 360) % 360;
 }
 
 /** Beendet den laufenden Monopoly-Zug, egal welche Phase ansteht. */
@@ -222,7 +246,41 @@ async function main() {
     if ((await backs()) !== 2) fail('Karten bleiben nach dem Loslassen offen.');
     console.log('✔ Halten deckt die Karten auf, Loslassen deckt sie wieder zu');
 
-    // --- 7) Kein einziger Socket.io-Kontakt --------------------------------
+    // --- 7) Feste Plätze: die Ansicht dreht sich zum aktiven Spieler -------
+    watchSocket = false;
+    await page.getByTitle('Partie beenden').click();
+    await page.locator('.home').waitFor();
+    watchSocket = true;
+
+    await page.locator('.game-monopoly').getByRole('button', { name: /Am Gerät spielen/ }).click();
+    await setupLocalGame(page, ['Anna', 'Ben', 'Clara', 'Dora'], 'fixed');
+    await page.locator('.board').waitFor();
+
+    const seen = new Set<number>();
+    let rotationChanged = false;
+    const firstRotation = await boardRotation(page);
+    seen.add(firstRotation);
+    for (let i = 0; i < 6 && !rotationChanged; i++) {
+      await finishTurn(page);
+      const now = await boardRotation(page);
+      seen.add(now);
+      if (now !== firstRotation) rotationChanged = true;
+    }
+    if (!rotationChanged) {
+      fail(`Die Ansicht dreht sich nicht mit (immer ${firstRotation}°).`);
+    }
+    // Nach einem Reload muss die Sitzordnung noch stehen
+    const before = await boardRotation(page);
+    await page.reload();
+    await page.locator('.board').waitFor({ timeout: 20_000 });
+    const after = await boardRotation(page);
+    if (before !== after) fail(`Sitzordnung nach Reload verloren: ${before}° → ${after}°`);
+    await page.screenshot({ path: path.join(SHOTS, 'local-fixed-seats.png') });
+    console.log(
+      `✔ Feste Plätze: Ansicht dreht mit (${[...seen].map((d) => `${d}°`).join(', ')}), überlebt Reload`
+    );
+
+    // --- 8) Kein einziger Socket.io-Kontakt --------------------------------
     if (socketTraffic) fail(`Socket.io-Verkehr während einer lokalen Partie: ${socketTraffic}`);
     console.log('✔ Kein Socket.io-Verkehr – der Modus kommt wirklich ohne Server aus');
 

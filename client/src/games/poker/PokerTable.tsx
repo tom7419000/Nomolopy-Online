@@ -57,6 +57,7 @@ function Seat({
   isMe,
   result,
   hideHole,
+  edge,
 }: {
   view: PokerView;
   player: PokerPlayer;
@@ -66,6 +67,8 @@ function Seat({
   result: HandResult | null;
   /** Lokal: der aktive Sitz zeigt seine Karten erst beim Halten des Knopfes. */
   hideHole?: boolean;
+  /** Feste Plätze: Kante, zu der sich diese Sitzbox drehen soll. */
+  edge?: number | null;
 }) {
   const isDealer = view.players[view.dealerIndex]?.id === player.id;
   const isToAct = view.toActIndex !== null && view.players[view.toActIndex]?.id === player.id;
@@ -83,8 +86,14 @@ function Seat({
     <div
       className={`seat ${isToAct ? 'to-act' : ''} ${player.folded ? 'folded' : ''} ${player.out ? 'out' : ''} ${
         won ? 'won' : ''
-      } ${isMe ? 'me' : ''}`}
-      style={{ left: `${x}%`, top: `${y}%` }}
+      } ${isMe ? 'me' : ''} ${edge != null ? 'fixed-edge' : ''}`}
+      style={
+        {
+          left: `${x}%`,
+          top: `${y}%`,
+          ...(edge != null ? { '--edge-deg': `${edge}deg` } : {}),
+        } as React.CSSProperties
+      }
     >
       <div className="seat-cards">
         {(reveal?.hole ?? player.hole ?? []).map((c, i) => (
@@ -354,14 +363,20 @@ export function PokerTable() {
   // Der aktive Sitz sitzt unten am Filz und zeigt dieselben echten Karten –
   // ohne diese Sperre wäre der Halten-Knopf wirkungslos.
   const hideOwnHole = isLocalGame && !peek.peeking;
+  const seating = useStore((s) => s.seating);
+  const fixedSeats = seating?.mode === 'fixed';
 
-  // Sitz-Anordnung: ich unten, Rest im Uhrzeigersinn
+  // Sitz-Anordnung: normalerweise „ich unten", Rest im Uhrzeigersinn.
+  //
+  // Bei festen Plätzen muss das entfallen: im lokalen Modus wechselt
+  // `session.playerId` nach JEDER Aktion, der Kranz würde sich also ständig
+  // sichtbar weiterdrehen, obwohl niemand aufsteht.
   const seats = useMemo(() => {
     const players = view.players;
-    if (!me) return players;
+    if (!me || fixedSeats) return players;
     const myIndex = players.findIndex((p) => p.id === me.id);
     return [...players.slice(myIndex), ...players.slice(0, myIndex)];
-  }, [view.players, me]);
+  }, [view.players, me, fixedSeats]);
 
   const pot = potTotal(view);
   const myHint = useMemo(() => {
@@ -454,6 +469,7 @@ export function PokerTable() {
                 isMe={p.id === me?.id}
                 result={view.street === 'showdown' ? view.handResult : null}
                 hideHole={p.id === me?.id && hideOwnHole}
+                edge={fixedSeats ? (seating?.edges[p.id] ?? 0) : null}
               />
             ))}
             <div className="felt-center">

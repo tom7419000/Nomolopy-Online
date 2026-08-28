@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { BoardEdition, GameState, Player, RulePreset } from '@shared/types';
 import type { LobbyChatMessage, PublicRoomInfo, RoomEnvelope } from '@shared/games';
 import type { PokerView } from '@shared/poker/types';
+import type { LocalSeating, SeatEdge } from '../net/localRoom';
 
 export interface Session {
   code: string;
@@ -46,10 +47,15 @@ interface AppStore {
   lobbyChat: LobbyChatMessage[];
   toasts: Toast[];
   dialog: Dialog;
+  /** Sitzordnung im lokalen Modus (Darstellung, kein Spielzustand) */
+  seating: LocalSeating | null;
+  /** Drehwinkel der Spielansicht – folgt dem Sitz, der gerade handelt */
+  rotation: SeatEdge;
   setConnected(v: boolean): void;
   setCatalog(editions: BoardEdition[], presets: RulePreset[]): void;
   setRoom(room: RoomEnvelope | null): void;
   setSession(session: Session | null): void;
+  setSeating(seating: LocalSeating | null, rotation: SeatEdge): void;
   setLobbyRooms(rooms: PublicRoomInfo[]): void;
   setLobbyChat(messages: LobbyChatMessage[]): void;
   pushLobbyChat(message: LobbyChatMessage): void;
@@ -73,6 +79,8 @@ export const useStore = create<AppStore>((set, get) => ({
   lobbyChat: [],
   toasts: [],
   dialog: null,
+  seating: null,
+  rotation: 0,
 
   setConnected: (v) => set({ connected: v }),
 
@@ -133,6 +141,8 @@ export const useStore = create<AppStore>((set, get) => ({
 
   setSession: (session) => set({ session }),
 
+  setSeating: (seating, rotation) => set({ seating, rotation }),
+
   setLobbyRooms: (lobbyRooms) => set({ lobbyRooms }),
 
   setLobbyChat: (lobbyChat) => set({ lobbyChat }),
@@ -164,6 +174,14 @@ export function useMe(): Player | undefined {
   return useStore((s) =>
     s.game && s.session ? s.game.players.find((p) => p.id === s.session!.playerId) : undefined
   );
+}
+
+/**
+ * Drehwinkel für die Spielansicht. Bei „Gerät weiterreichen" immer 0 – dort
+ * wandert das Gerät, nicht das Bild.
+ */
+export function useSeatRotation(): SeatEdge {
+  return useStore((s) => s.rotation);
 }
 
 export function useIsMyTurn(): boolean {

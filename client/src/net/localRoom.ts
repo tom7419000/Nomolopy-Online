@@ -40,10 +40,58 @@ import type { ActionResult, BoardEdition, GameAction, GameState } from '@shared/
 import type { GameId, RoomEnvelope, RoomMeta } from '@shared/games';
 import type { PokerAction, PokerRules, PokerState } from '@shared/poker/types';
 
+/** Tischkante, an der ein Spieler sitzt – als Drehwinkel der Ansicht. */
+export type SeatEdge = 0 | 90 | 180 | 270;
+
+/**
+ * Wie das Gerät am Tisch benutzt wird.
+ *
+ * `pass`  – es wandert reihum, die Ansicht bleibt wie sie ist (Vorgabe).
+ * `fixed` – es liegt in der Mitte, jeder sitzt an einer Kante, und die
+ *           Ansicht dreht sich zu dem, der gerade handelt.
+ *
+ * Das ist reine Darstellung und gehört deshalb NICHT in den Spielzustand:
+ * keine Engine und kein Envelope wissen davon.
+ */
+export interface LocalSeating {
+  mode: 'pass' | 'fixed';
+  /** playerId → Kante. Nur bei `fixed` gefüllt. */
+  edges: Record<string, SeatEdge>;
+}
+
+/** Vier Kanten – mehr Sitze als Kanten geht bei festen Plätzen nicht. */
+export const SEAT_EDGES: SeatEdge[] = [0, 270, 180, 90];
+export const MAX_FIXED_SEATS = SEAT_EDGES.length;
+
+export const EDGE_LABELS: Record<SeatEdge, string> = {
+  0: 'unten',
+  90: 'links',
+  180: 'oben',
+  270: 'rechts',
+};
+
+/** Vorbelegung: gegenübersitzend beginnen, dann die Seiten dazu. */
+export function defaultEdges(playerIds: string[]): Record<string, SeatEdge> {
+  const order: SeatEdge[] = playerIds.length <= 2 ? [0, 180] : SEAT_EDGES;
+  const edges: Record<string, SeatEdge> = {};
+  playerIds.forEach((id, i) => {
+    edges[id] = order[i % order.length];
+  });
+  return edges;
+}
+
+/** Drehwinkel für den gerade handelnden Sitz. 0 = nichts drehen. */
+export function rotationFor(seating: LocalSeating | null, seatId: string | null): SeatEdge {
+  if (!seating || seating.mode !== 'fixed' || !seatId) return 0;
+  return seating.edges[seatId] ?? 0;
+}
+
 export interface LocalRoom {
   meta: RoomMeta;
   monopoly: GameState | null;
   poker: PokerState | null;
+  /** null = klassisches Weiterreichen */
+  seating: LocalSeating | null;
 }
 
 export interface LocalRoomOptions {
@@ -56,6 +104,10 @@ export interface LocalRoomOptions {
   pokerRules?: Partial<PokerRules>;
   /** Eigene Editionen aus dem Admin-Bereich, falls vorhanden. */
   editions?: BoardEdition[];
+  /** Feste Plätze statt Weiterreichen (siehe `LocalSeating`). */
+  seatMode?: LocalSeating['mode'];
+  /** Kante je Sitz, in derselben Reihenfolge wie `players`. */
+  seatEdges?: SeatEdge[];
 }
 
 export interface LocalRoomHooks {
@@ -87,7 +139,7 @@ export function createLocalRoom(opts: LocalRoomOptions): LocalRoom {
     createdAt: Date.now(),
   };
 
-  const room: LocalRoom = { meta, monopoly: null, poker: null };
+  const room: LocalRoom = { meta, monopoly: null, poker: null, seating: null };
 
   if (opts.gameId === 'poker') {
     const rules = sanitizePokerRules({ ...opts.pokerRules });
@@ -100,6 +152,16 @@ export function createLocalRoom(opts: LocalRoomOptions): LocalRoom {
     const preset = getPreset(opts.presetId ?? 'classic');
     room.monopoly = createGame(code, edition, preset.id, preset.rules);
     for (const name of names) addPlayer(room.monopoly, randomId(), name, true);
+  }
+
+  // Sitzordnung erst NACH dem Anlegen: die Spieler-IDs entstehen oben.
+  if (opts.seatMode === 'fixed') {
+    const ids = (room.monopoly?.players ?? room.poker?.players ?? []).map((p) => p.id);
+    const edges = defaultEdges(ids);
+    opts.seatEdges?.forEach((deg, i) => {
+      if (ids[i]) edges[ids[i]] = deg;
+    });
+    room.seating = { mode: 'fixed', edges };
   }
 
   return room;

@@ -13,6 +13,12 @@ import { DEFAULT_POKER_RULES, POKER_LIMITS } from '@shared/poker/rules';
 import type { PokerRules } from '@shared/poker/types';
 import { PLAYER_COLORS } from '@shared/util';
 import { startLocalGame } from '../net';
+import {
+  EDGE_LABELS,
+  MAX_FIXED_SEATS,
+  SEAT_EDGES,
+  type SeatEdge,
+} from '../net/localRoom';
 import { loadName, saveName, useStore } from '../state/store';
 import { Modal } from '../components/Modal';
 
@@ -21,6 +27,7 @@ export function LocalSetup({ gameId, onClose }: { gameId: GameId; onClose: () =>
   const addToast = useStore((s) => s.addToast);
 
   const [names, setNames] = useState<string[]>(() => [loadName() || 'Spieler 1', 'Spieler 2']);
+  const [seatMode, setSeatMode] = useState<'pass' | 'fixed'>('pass');
   const [editionId, setEditionId] = useState(BUILT_IN_EDITIONS[0]?.id ?? 'classic-de');
   const [presetId, setPresetId] = useState('classic');
   const [poker, setPoker] = useState<PokerRules>({
@@ -30,6 +37,23 @@ export function LocalSetup({ gameId, onClose }: { gameId: GameId; onClose: () =>
 
   const edition = BUILT_IN_EDITIONS.find((e) => e.id === editionId);
   const preset = RULE_PRESETS.find((p) => p.id === presetId);
+
+  // Mehr Spieler als Kanten: „feste Plätze" fällt dann automatisch weg.
+  // Bewusst abgeleitet statt per setState im Render – das gäbe eine
+  // zusätzliche Renderrunde und im schlechten Fall eine Schleife.
+  const tooManyForFixed = names.length > MAX_FIXED_SEATS;
+  const effectiveSeatMode = tooManyForFixed ? 'pass' : seatMode;
+
+  const [edges, setEdges] = useState<SeatEdge[]>([0, 180, 270, 90]);
+  const edgeOf = (i: number): SeatEdge => edges[i] ?? SEAT_EDGES[i % SEAT_EDGES.length];
+  function setEdge(i: number, deg: SeatEdge) {
+    setEdges((prev) => {
+      const next = [...prev];
+      while (next.length <= i) next.push(SEAT_EDGES[next.length % SEAT_EDGES.length]);
+      next[i] = deg;
+      return next;
+    });
+  }
 
   function setName(i: number, value: string) {
     setNames((prev) => prev.map((n, idx) => (idx === i ? value : n)));
@@ -68,6 +92,8 @@ export function LocalSetup({ gameId, onClose }: { gameId: GameId; onClose: () =>
       editionId,
       presetId,
       pokerRules: gameId === 'poker' ? poker : undefined,
+      seatMode: effectiveSeatMode,
+      seatEdges: effectiveSeatMode === 'fixed' ? cleaned.map((_, i) => edgeOf(i)) : undefined,
     });
     if (r.ok) onClose();
   }
@@ -78,6 +104,42 @@ export function LocalSetup({ gameId, onClose }: { gameId: GameId; onClose: () =>
         Alle spielen abwechselnd an diesem Gerät. Es wird nichts über das Internet
         übertragen – die Partie läuft auch im Flugmodus.
       </p>
+
+      <h3 className="setup-title">Wie liegt das Gerät?</h3>
+      <div className="seat-mode-row">
+        <button
+          className={`btn ${effectiveSeatMode === 'pass' ? 'active' : ''}`}
+          onClick={() => setSeatMode('pass')}
+        >
+          📱 Weiterreichen
+        </button>
+        <button
+          className={`btn ${effectiveSeatMode === 'fixed' ? 'active' : ''}`}
+          disabled={tooManyForFixed}
+          onClick={() => setSeatMode('fixed')}
+        >
+          🪑 Feste Plätze
+        </button>
+      </div>
+      <p className="hint">
+        {effectiveSeatMode === 'fixed'
+          ? 'Das Gerät liegt in der Mitte. Wer dran ist, bekommt das Brett zu sich gedreht.'
+          : 'Das Gerät wandert reihum. Die Ansicht bleibt, wie sie ist.'}
+      </p>
+      {tooManyForFixed && (
+        <p className="hint">
+          Feste Plätze gehen bis {MAX_FIXED_SEATS} Spieler – ein Tisch hat vier Kanten.
+        </p>
+      )}
+      {effectiveSeatMode === 'fixed' && (
+        <div className="seat-table-hint">
+          oben
+          <br />
+          links ▢ rechts
+          <br />
+          unten
+        </div>
+      )}
 
       <h3 className="setup-title">Spieler ({names.length})</h3>
       <ul className="seat-setup">
@@ -91,6 +153,20 @@ export function LocalSetup({ gameId, onClose }: { gameId: GameId; onClose: () =>
               onChange={(e) => setName(i, e.target.value)}
               aria-label={`Name Spieler ${i + 1}`}
             />
+            {effectiveSeatMode === 'fixed' && (
+              <select
+                className="input small seat-edge-select"
+                value={edgeOf(i)}
+                onChange={(e) => setEdge(i, Number(e.target.value) as SeatEdge)}
+                aria-label={`Tischkante Spieler ${i + 1}`}
+              >
+                {SEAT_EDGES.map((deg) => (
+                  <option key={deg} value={deg}>
+                    {EDGE_LABELS[deg]}
+                  </option>
+                ))}
+              </select>
+            )}
             <button
               className="btn ghost small"
               onClick={() => removeRow(i)}

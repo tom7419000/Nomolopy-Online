@@ -1528,3 +1528,56 @@ button,
 }
 .auction-controls .input.small { width: 100px; }
 .auction-passed { margin-top: 6px; }
+
+/* --------------------------------------------------------------------------
+   Feste Sitzplätze: die Spielansicht dreht sich zum aktiven Spieler
+   -------------------------------------------------------------------------- */
+
+/* Gedreht wird nur das Brett. Es ist quadratisch (`aspect-ratio: 1`), also
+   ist die Bounding-Box bei 90/180/270° dieselbe – nichts läuft über. Und
+   `container-type: inline-size` sorgt dafür, dass die cqw-Schriftgrößen
+   im Inneren gültig bleiben, weil Transforms das Layout nicht anfassen. */
+.board {
+  transform: rotate(var(--seat-rotation, 0deg));
+  transition: transform 420ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Der Text auf den Feldern wird bewusst NICHT gegengedreht: bei 180° liest
+   das Brett für die Gegenüber kopfüber – genau wie ein echtes Brett. */
+
+@media (prefers-reduced-motion: reduce) {
+  .board { transition: none; }
+}
+
+/* Poker: der Filz bleibt stehen (er ist asymmetrisch auf „ich unten"
+   zugeschnitten), aber jede Sitzbox dreht sich zu ihrem Spieler. */
+.seat.fixed-edge .seat-box,
+.seat.fixed-edge .seat-cards,
+.seat.fixed-edge .seat-action,
+.seat.fixed-edge .seat-bet,
+.seat.fixed-edge .seat-handname {
+  transform: rotate(var(--edge-deg, 0deg));
+  transition: transform 420ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Setup: Tischskizze mit den vier Kanten */
+.seat-mode-row { display: flex; gap: 8px; margin: 10px 0 4px; }
+.seat-mode-row .btn { flex: 1; }
+.seat-mode-row .btn.active { border-color: var(--accent); background: var(--panel-3); }
+.seat-edge-select { width: 92px; }
+.seat-table-hint {
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  margin: 6px 0 10px;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.pass-banner { transition: transform 420ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+@media (prefers-reduced-motion: reduce) {
+  .pass-banner { transition: none; }
+}

@@ -37,7 +37,7 @@ LAN einfach `http://<deine-IP>:3001` an die Mitspieler geben. Port per `PORT`,
 Datenverzeichnis (Editionen/Spielstände) per `DATA_DIR` konfigurierbar.
 
 ```bash
-npm test                                 # Unit-Tests: Monopoly, Poker, lokaler Raum (68 Tests)
+npm test                                 # Unit-Tests: Monopoly, Poker, lokaler Raum (76 Tests)
 npm run typecheck
 npm run build && npm run test:e2e        # Browser-E2E: Monopoly (Playwright)
 npm run build && npm run test:e2e:poker  # Browser-E2E: Poker inkl. Karten-Redaction
@@ -67,6 +67,26 @@ Namen eintragen, los.
   Tab zumachen und später weiterspielen geht.
 - **„👉 Anna ist dran"** steht dauerhaft über dem Spielfeld – am geteilten
   Bildschirm die wichtigste Information überhaupt.
+
+### Weiterreichen oder feste Plätze
+
+Beim Anlegen der Partie wird gewählt, wie das Gerät auf dem Tisch liegt:
+
+| | |
+|---|---|
+| **📱 Weiterreichen** (Vorgabe) | Das Gerät wandert reihum, die Ansicht bleibt wie sie ist. |
+| **🪑 Feste Plätze** | Das Gerät liegt in der Mitte, jeder sitzt an einer Kante (unten / rechts / oben / links). Wer dran ist, bekommt das Brett zu sich gedreht. |
+
+Feste Plätze gehen bis vier Spieler – ein Tisch hat vier Kanten. Der Text auf
+den Feldern wird bewusst **nicht** gegengedreht: bei 180° liest das Brett für
+die Gegenübersitzenden kopfüber, genau wie ein echtes Brett.
+
+Gedreht wird nur das Spielfeld, nicht die App-Hülle. Toasts, Dialoge und die
+Kopfzeile bleiben aufrecht – sie hängen an `position: fixed` und an
+Viewport-Einheiten, die sich immer auf den physischen Bildschirm beziehen.
+Bei Poker bleibt der Sitzkranz stehen und stattdessen dreht sich jede
+Sitzbox einzeln zu ihrem Spieler; der Filz selbst ist auf „ich unten"
+zugeschnitten und liefe quer über den Rand.
 
 ### Poker: Handkarten bleiben geheim
 
