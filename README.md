@@ -308,6 +308,22 @@ anlegen. Alternativ (Proxy behält den Präfix bei): den Dienst mit
 `Environment=BASE_PATH=/playhub` starten und ohne abschließenden
 Slash proxyen.
 
+### 4. Updates einspielen
+
+`scripts/update.sh` zieht den konfigurierten Branch, installiert
+Abhängigkeiten, baut den Client neu, startet den systemd-Dienst neu und
+prüft `/healthz`. Schlägt der Healthcheck fehl, wird automatisch auf den
+vorherigen Commit zurückgerollt.
+
+```bash
+cd /opt/playhub
+sudo APP_DIR=/opt/playhub SERVICE=playhub ./scripts/update.sh
+# oder kurz, falls im Repo-Verzeichnis: sudo npm run update
+```
+
+Bricht das Skript ab (z. B. wegen uncommitteter Änderungen im
+Arbeitsverzeichnis), wird nichts angefasst – erst danach erneut ausführen.
+
 ---
 
 ## Bedienung
