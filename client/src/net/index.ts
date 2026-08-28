@@ -7,9 +7,9 @@
  * sich pro Aufruf – ein Wechsel mitten in der Sitzung ist damit unproblematisch.
  */
 
-import { socketApi, type CreateRoomOptions } from './socket';
+import { resumeSocket, socketApi, type CreateRoomOptions } from './socket';
 import { localApi, restoreLocalGame } from './local';
-import { getMode } from './mode';
+import { getMode, setMode } from './mode';
 
 export type { CreateRoomOptions };
 export { getMode, setMode, isLocal } from './mode';
@@ -48,4 +48,12 @@ export const api: SocketApi = {
 
 // Eine unterbrochene lokale Partie hat Vorrang vor einer alten Online-Sitzung:
 // Wer das Tablet zuklappt und wieder aufmacht, will weiterspielen.
-restoreLocalGame();
+//
+// `mode.ts` hat den Modus schon beim Laden auf 'local' gestellt, falls ein
+// Spielstand vorliegt – deshalb hat der Socket gar nicht erst verbunden.
+// Scheitert die Wiederherstellung (leerer oder kaputter Eintrag), muss dieser
+// Vorgriff zurückgenommen werden, sonst bliebe die App ohne Verbindung.
+if (!restoreLocalGame() && getMode() === 'local') {
+  setMode('online');
+  resumeSocket();
+}

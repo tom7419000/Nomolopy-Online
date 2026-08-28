@@ -37,16 +37,62 @@ LAN einfach `http://<deine-IP>:3001` an die Mitspieler geben. Port per `PORT`,
 Datenverzeichnis (Editionen/Spielstände) per `DATA_DIR` konfigurierbar.
 
 ```bash
-npm test                                 # Unit-Tests: Monopoly-Regeln + Poker-Engine (38 Tests)
+npm test                                 # Unit-Tests: Monopoly, Poker, lokaler Raum (55 Tests)
 npm run typecheck
 npm run build && npm run test:e2e        # Browser-E2E: Monopoly (Playwright)
 npm run build && npm run test:e2e:poker  # Browser-E2E: Poker inkl. Karten-Redaction
 npm run build && npm run test:e2e:pwa    # Browser-E2E: Manifest, Service Worker, Offline
+npm run build && npm run test:e2e:local  # Browser-E2E: Pass & Play mit abgeschaltetem Netz
 ```
 
-> Die E2E-Tests starten je einen eigenen Server (Ports 4096–4098). Bricht ein
+> Die E2E-Tests starten je einen eigenen Server (Ports 4096–4099). Bricht ein
 > Lauf hart ab, können Server zurückbleiben – dann vor dem nächsten Lauf
 > `pkill -f "server/index.ts"` ausführen.
+
+---
+
+## 👨‍👩‍👧‍👦 Zu viert an einem Tablet (Pass & Play)
+
+Neben dem Online-Modus lässt sich **an einem einzigen Gerät** spielen: Tablet
+in die Tischmitte, alle sitzen drumherum, das Gerät wandert reihum. Auf der
+Startseite bei Monopoly oder Poker auf **„📱 Am Gerät spielen"** tippen,
+Namen eintragen, los.
+
+- **Kein Server, kein Netz.** Die Spiel-Engine läuft im Browser. Der Modus
+  funktioniert im Flugmodus, im Zug und im Garten – die Verbindung wird für
+  die Dauer der Partie sogar bewusst schlafen gelegt.
+- **Kein Wartezimmer, kein Code.** Es gibt niemanden, auf den man warten
+  müsste: Nach dem Setup startet die Partie sofort.
+- **Der Spielstand überlebt einen Reload.** Er liegt im Browser-Speicher;
+  Tab zumachen und später weiterspielen geht.
+- **„👉 Anna ist dran"** steht dauerhaft über dem Spielfeld – am geteilten
+  Bildschirm die wichtigste Information überhaupt.
+
+### Poker: Handkarten bleiben geheim
+
+Am gemeinsamen Bildschirm liegen die Karten verdeckt. Wer dran ist, hält
+**„🔍 Karten ansehen"** gedrückt und sieht seine Hand, solange der Finger
+liegen bleibt; Loslassen deckt sie wieder zu. Zusätzlich verdeckt sich die
+Hand von selbst, sobald der Zug weitergeht, die App in den Hintergrund
+gerät – oder nach zehn Sekunden, falls das Loslassen mal nicht ankommt.
+
+Es ist eine Anzeige-Sperre, keine Verschlüsselung: Wer die Entwickler-
+werkzeuge öffnet, kommt an die Karten des aktiven Sitzes. Genau wie jemand,
+der am echten Tisch dem Nachbarn auf die Hand schaut – dagegen hilft kein
+Frontend.
+
+Eine **Bedenkzeit gibt es lokal nicht**. Online foldet die Uhr Abwesende
+automatisch; am Tisch wäre ein Auto-Fold, nur weil das Tablet gerade
+weitergereicht wird, die falsche Strafe. Nach dem Showdown bleiben die
+aufgedeckten Karten dafür länger stehen (25 statt 9 Sekunden), damit alle
+in Ruhe schauen können.
+
+### Was lokal wegfällt
+
+Raum-Link und -Code, Beitreten, Spieler entfernen, Lobby-Chat, öffentliche
+Raumliste, Spielstände auf dem Server und der Editionen-Admin – all das
+setzt einen Server voraus und ist im lokalen Modus ausgeblendet statt
+kaputt.
 
 ---
 
@@ -198,7 +244,11 @@ client/            React 18 + TypeScript + Vite + zustand
   games/poker/       PokerTable (Tisch, Sitze, Action-Bar), PlayingCard
   components/        Chat, Modal, Toasts (spielübergreifend)
   hooks/             useHashRoute (teilbare #/room/CODE-Links)
-  net/socket.ts      Socket-Verbindung, Request/Response, Reconnect
+  net/index.ts       Transport-Router: leitet je nach Modus um
+  net/socket.ts      Online: Socket-Verbindung, Request/Response, Reconnect
+  net/localRoom.ts   Lokal: Raum-Logik im Browser (DOM-frei, testbar)
+  net/local.ts       Lokal: Verdrahtung mit Store und localStorage
+  pages/LocalSetup   Setup für eine Partie am gemeinsamen Gerät
   state/store.ts     zentraler App-State (RoomEnvelope vom Server)
 
 tests/
@@ -206,6 +256,8 @@ tests/
   poker.test.ts      19 Unit-Tests Poker (Rankings, Side-Pots, Blinds, Timeouts)
   e2e.ts             Browser-E2E Monopoly: 2 Spieler, Link-Beitritt, echtes Spiel
   e2e-poker.ts       Browser-E2E Poker: Showdown, Raise/Fold, Redaction, Zuschauer
+  local-room.test.ts 17 Unit-Tests lokaler Raum: Sitzrotation, Klon-Vertrag, Redaction
+  e2e-local.ts       Browser-E2E Pass & Play – mit abgeschaltetem Netz
 ```
 
 **Designentscheidungen**

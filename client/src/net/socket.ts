@@ -21,7 +21,9 @@ export const socket = io({
   // Gleicher Origin: In Produktion liefert der Server den Client aus,
   // im Dev-Modus proxied Vite /socket.io zum Server.
   path: socketPath,
-  autoConnect: true,
+  // Wird eine lokale Partie fortgesetzt, gar nicht erst verbinden: Der Server
+  // hat damit nichts zu tun, und ohne Netz wären es nur Fehlversuche.
+  autoConnect: !isLocal(),
 });
 
 interface Resp {

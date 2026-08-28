@@ -39,13 +39,13 @@ export function TurnBanner() {
   if (!name) return null;
 
   return (
-    <div className="turn-banner" style={{ borderColor: color }} role="status" aria-live="polite">
-      <span className="turn-banner-token" style={{ background: color }} aria-hidden>
+    <div className="pass-banner" style={{ borderColor: color }} role="status" aria-live="polite">
+      <span className="pass-banner-token" style={{ background: color }} aria-hidden>
         {hint}
       </span>
       <strong>{name}</strong>
       <span>ist dran</span>
-      <span className="turn-banner-pass" aria-hidden>
+      <span className="pass-banner-pass" aria-hidden>
         📱 weitergeben
       </span>
     </div>

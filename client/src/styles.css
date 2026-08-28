@@ -1416,7 +1416,7 @@ input[type='number'] { appearance: textfield; }
 /* „X ist dran" – am geteilten Gerät die wichtigste Information überhaupt.
    Bewusst ein dauerhaftes Band statt eines Toasts: Wer nach dem Weiterreichen
    aufs Tablet schaut, hat den Toast längst verpasst. */
-.turn-banner {
+.pass-banner {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1427,8 +1427,8 @@ input[type='number'] { appearance: textfield; }
   background: var(--panel-2);
   font-size: 1.05rem;
 }
-.turn-banner strong { font-size: 1.25rem; }
-.turn-banner-token {
+.pass-banner strong { font-size: 1.25rem; }
+.pass-banner-token {
   display: grid;
   place-items: center;
   width: 34px;
@@ -1437,7 +1437,7 @@ input[type='number'] { appearance: textfield; }
   font-size: 1.1rem;
   flex-shrink: 0;
 }
-.turn-banner-pass { margin-left: auto; color: var(--text-dim); font-size: 0.85rem; }
+.pass-banner-pass { margin-left: auto; color: var(--text-dim); font-size: 0.85rem; }
 
 /* Setup-Bildschirm */
 .setup-title { margin: 14px 0 6px; font-size: 0.95rem; color: var(--text-dim); }

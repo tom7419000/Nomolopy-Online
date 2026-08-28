@@ -11,11 +11,10 @@ import type { GameId, RoomEnvelope } from '@shared/games';
 import type { PokerAction, PokerRules, PokerState } from '@shared/poker/types';
 import type { GameState } from '@shared/types';
 import { useStore } from '../state/store';
-import { setMode } from './mode';
+import { LOCAL_GAME_KEY, setMode } from './mode';
 import { resumeSocket, suspendSocket } from './socket';
 import { createLocalRoom, LocalRoomRunner, type LocalRoom } from './localRoom';
 
-const LOCAL_KEY = 'playhub.local';
 const STORE_VERSION = 1;
 
 interface StoredLocal {
@@ -47,7 +46,7 @@ function persist(room: LocalRoom): void {
       ...(room.monopoly ? { monopoly: room.monopoly } : {}),
       ...(room.poker ? { poker: room.poker } : {}),
     };
-    localStorage.setItem(LOCAL_KEY, JSON.stringify(payload));
+    localStorage.setItem(LOCAL_GAME_KEY, JSON.stringify(payload));
     storageWarned = false;
   } catch {
     // Eigene Editionen können Bilder als Data-URL enthalten und die Quote
@@ -61,7 +60,7 @@ function persist(room: LocalRoom): void {
 
 export function clearLocalGame(): void {
   try {
-    localStorage.removeItem(LOCAL_KEY);
+    localStorage.removeItem(LOCAL_GAME_KEY);
   } catch {
     // ignorieren
   }
@@ -69,7 +68,7 @@ export function clearLocalGame(): void {
 
 function readStored(): StoredLocal | null {
   try {
-    const raw = localStorage.getItem(LOCAL_KEY);
+    const raw = localStorage.getItem(LOCAL_GAME_KEY);
     if (!raw) return null;
     const s = JSON.parse(raw) as StoredLocal;
     if (s?.v !== STORE_VERSION || !s.meta) return null;
