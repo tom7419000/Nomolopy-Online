@@ -7,15 +7,13 @@
  * sich pro Aufruf – ein Wechsel mitten in der Sitzung ist damit unproblematisch.
  */
 
-import { resumeSocket, socketApi, type CreateRoomOptions } from './socket';
+import { resumeSocket, socketApi, type CreateRoomOptions, type SocketApi } from './socket';
 import { localApi, restoreLocalGame } from './local';
 import { getMode, setMode } from './mode';
 
 export type { CreateRoomOptions };
 export { getMode, setMode, isLocal } from './mode';
 export { startLocalGame, isLocalRunning, type StartLocalOptions } from './local';
-
-type SocketApi = typeof socketApi;
 
 /** Wählt pro Aufruf die Implementierung des aktiven Transports. */
 function route<K extends keyof SocketApi>(method: K): SocketApi[K] {
@@ -30,7 +28,6 @@ export const api: SocketApi = {
   joinRoom: route('joinRoom'),
   leaveRoom: route('leaveRoom'),
   action: route('action'),
-  pokerAction: route('pokerAction'),
   chat: route('chat'),
   lobbyChat: route('lobbyChat'),
   kick: route('kick'),

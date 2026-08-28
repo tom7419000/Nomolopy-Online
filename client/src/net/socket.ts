@@ -6,9 +6,8 @@
  */
 
 import { io } from 'socket.io-client';
-import type { GameAction } from '@shared/types';
 import type { GameId, RoomEnvelope } from '@shared/games';
-import type { PokerAction, PokerRules } from '@shared/poker/types';
+import type { PokerRules } from '@shared/poker/types';
 import { useStore, loadSession, saveSession, clearSession } from '../state/store';
 import { isLocal } from './mode';
 
@@ -165,11 +164,11 @@ export const socketApi = {
     useStore.getState().setRoom(null);
   },
 
-  action(action: GameAction) {
-    return withErrorToast(call('game:action', action));
-  },
-
-  pokerAction(action: PokerAction) {
+  /**
+   * Spielzug. Der Server entscheidet anhand des Raums, welche Engine ihn
+   * bekommt – deshalb reicht EINE Methode für alle Spiele.
+   */
+  action(action: unknown) {
     return withErrorToast(call('game:action', action));
   },
 
@@ -247,3 +246,6 @@ export function suspendSocket(): void {
 export function resumeSocket(): void {
   if (!socket.connected) socket.connect();
 }
+
+/** Die Form, die jeder Transport erfüllen muss. */
+export type SocketApi = typeof socketApi;

@@ -8,8 +8,7 @@
 import { useState } from 'react';
 import { getGameInfo, type GameId } from '@shared/games';
 import { BUILT_IN_EDITIONS } from '@shared/boards';
-import { RULE_PRESETS } from '@shared/rules';
-import { DEFAULT_POKER_RULES, POKER_LIMITS } from '@shared/poker/rules';
+import { DEFAULT_POKER_RULES } from '@shared/poker/rules';
 import type { PokerRules } from '@shared/poker/types';
 import { PLAYER_COLORS } from '@shared/util';
 import { startLocalGame } from '../net';
@@ -21,9 +20,11 @@ import {
 } from '../net/localRoom';
 import { loadName, saveName, useStore } from '../state/store';
 import { Modal } from '../components/Modal';
+import { CLIENT_GAMES } from '../games/registry';
 
 export function LocalSetup({ gameId, onClose }: { gameId: GameId; onClose: () => void }) {
   const info = getGameInfo(gameId);
+  const CreateFields = CLIENT_GAMES[gameId].CreateFields;
   const addToast = useStore((s) => s.addToast);
 
   const [names, setNames] = useState<string[]>(() => [loadName() || 'Spieler 1', 'Spieler 2']);
@@ -34,9 +35,6 @@ export function LocalSetup({ gameId, onClose }: { gameId: GameId; onClose: () =>
     ...DEFAULT_POKER_RULES,
     blindIncreaseMinutes: 0,
   });
-
-  const edition = BUILT_IN_EDITIONS.find((e) => e.id === editionId);
-  const preset = RULE_PRESETS.find((p) => p.id === presetId);
 
   // Mehr Spieler als Kanten: „feste Plätze" fällt dann automatisch weg.
   // Bewusst abgeleitet statt per setState im Render – das gäbe eine
@@ -185,79 +183,15 @@ export function LocalSetup({ gameId, onClose }: { gameId: GameId; onClose: () =>
         </button>
       )}
 
-      {gameId === 'monopoly' && (
-        <>
-          <label className="field">
-            <span>Edition</span>
-            <select className="input" value={editionId} onChange={(e) => setEditionId(e.target.value)}>
-              {BUILT_IN_EDITIONS.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          {edition?.description && <p className="hint">{edition.description}</p>}
-          <label className="field">
-            <span>Regel-Preset</span>
-            <select className="input" value={presetId} onChange={(e) => setPresetId(e.target.value)}>
-              {RULE_PRESETS.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          {preset && <p className="hint">{preset.description}</p>}
-        </>
-      )}
-
-      {gameId === 'poker' && (
-        <>
-          <div className="field-row">
-            <label className="field">
-              <span>Buy-in (Chips)</span>
-              <input
-                type="number"
-                className="input small"
-                min={POKER_LIMITS.buyIn.min}
-                max={POKER_LIMITS.buyIn.max}
-                step={POKER_LIMITS.buyIn.step}
-                value={poker.buyIn}
-                onChange={(e) => setPoker({ ...poker, buyIn: Number(e.target.value) })}
-              />
-            </label>
-            <label className="field">
-              <span>Small Blind</span>
-              <input
-                type="number"
-                className="input small"
-                min={POKER_LIMITS.smallBlind.min}
-                max={POKER_LIMITS.smallBlind.max}
-                step={POKER_LIMITS.smallBlind.step}
-                value={poker.smallBlind}
-                onChange={(e) => setPoker({ ...poker, smallBlind: Number(e.target.value) })}
-              />
-            </label>
-          </div>
-          <label className="rule-row boolean">
-            <span>Rebuy erlaubt (Pleite-Spieler kaufen sich neu ein)</span>
-            <input
-              type="checkbox"
-              checked={poker.allowRebuy}
-              onChange={(e) => setPoker({ ...poker, allowRebuy: e.target.checked })}
-            />
-          </label>
-          <p className="hint">
-            🔍 Die Handkarten bleiben verdeckt. Wer dran ist, hält den Knopf
-            „Karten ansehen" gedrückt – loslassen deckt sie wieder zu.
-          </p>
-          <p className="hint">
-            Eine Bedenkzeit gibt es hier nicht: Am gemeinsamen Gerät wäre ein
-            Auto-Fold beim Weiterreichen die falsche Strafe.
-          </p>
-        </>
-      )}
+      <CreateFields
+        editionId={editionId}
+        setEditionId={setEditionId}
+        presetId={presetId}
+        setPresetId={setPresetId}
+        poker={poker as unknown as Record<string, unknown>}
+        setPoker={(v) => setPoker(v as unknown as PokerRules)}
+        local
+      />
 
       <button className="btn primary big" onClick={start}>
         {info.emoji} Spiel starten

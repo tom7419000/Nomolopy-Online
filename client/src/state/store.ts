@@ -1,7 +1,10 @@
 import { create } from 'zustand';
 import type { BoardEdition, GameState, Player, RulePreset } from '@shared/types';
+import type { SeatInfo } from '@shared/registry';
 import type { LobbyChatMessage, PublicRoomInfo, RoomEnvelope } from '@shared/games';
 import type { PokerView } from '@shared/poker/types';
+import { moduleFor } from '@shared/registry';
+import { CLIENT_GAMES } from '../games/registry';
 import type { LocalSeating, SeatEdge } from '../net/localRoom';
 
 export interface Session {
@@ -87,52 +90,37 @@ export const useStore = create<AppStore>((set, get) => ({
   setCatalog: (editions, presets) => set({ editions, presets }),
 
   setRoom: (room) => {
-    const { game: prevGame, poker: prevPoker, session, addToast } = get();
+    const { room: prevRoom, session, addToast } = get();
     const game = room?.monopoly ?? null;
     const poker = room?.poker ?? null;
 
-    // Monopoly: „Du bist dran"-Hinweis
-    if (game && session && game.phase === 'playing') {
-      const nowCurrent = game.players[game.currentPlayer];
-      const prevCurrent =
-        prevGame && prevGame.phase === 'playing' ? prevGame.players[prevGame.currentPlayer] : null;
-      const becameMyTurn =
-        nowCurrent?.id === session.playerId &&
-        (prevCurrent?.id !== session.playerId || prevGame?.phase !== 'playing');
-      if (becameMyTurn && game.turnPhase === 'awaiting-roll') {
-        // Am gemeinsamen Gerät ist der Name die Information, die zählt –
-        // „du" wäre für alle am Tisch mehrdeutig.
-        addToast('turn', session.mode === 'local' ? `👉 ${nowCurrent.name} ist dran` : '🎲 Du bist dran!');
-      }
-      // Neue Auktion? Der Vergleich über die id feuert einmal pro Auktion
-      // statt bei jedem Broadcast – dasselbe Muster wie beim Handel.
-      if (game.auction && prevGame?.auction?.id !== game.auction.id) {
-        const tile = game.edition.tiles[game.auction.tileId];
-        addToast('info', `🔨 ${tile?.name ?? 'Ein Grundstück'} wird versteigert.`);
-      } else if (
-        game.auction &&
-        prevGame?.auction &&
-        game.auction.highBidderId !== prevGame.auction.highBidderId &&
-        prevGame.auction.highBidderId === session.playerId
-      ) {
-        addToast('info', '🔨 Du wurdest überboten.');
-      }
+    if (room && session) {
+      const gameId = room.meta.gameId;
+      const m = moduleFor(gameId);
+      const state = room[gameId];
+      const prevState = prevRoom?.meta.gameId === gameId ? prevRoom[gameId] : undefined;
 
-      const newTradeForMe =
-        game.trade && game.trade.toId === session.playerId && prevGame?.trade?.id !== game.trade.id;
-      if (newTradeForMe) {
-        const from = game.players.find((p) => p.id === game.trade!.fromId);
-        addToast('info', `🤝 ${from?.name ?? 'Jemand'} schlägt dir einen Handel vor.`);
-      }
-    }
+      if (state) {
+        // „Du bist dran" – generisch über die Registry, statt wie früher
+        // einmal handgeschrieben pro Spiel.
+        const nowActive = m.activeSeatId(state);
+        const prevActive = prevState ? m.activeSeatId(prevState) : null;
+        if (nowActive === session.playerId && prevActive !== session.playerId) {
+          const seat = m.seats(state).find((p) => p.id === nowActive);
+          // Am gemeinsamen Gerät ist der Name die Information, die zählt –
+          // „du" wäre für alle am Tisch mehrdeutig.
+          addToast(
+            'turn',
+            session.mode === 'local' ? `👉 ${seat?.name ?? 'Jemand'} ist dran` : '👉 Du bist dran!'
+          );
+        }
 
-    // Poker: „Du bist dran"-Hinweis
-    if (poker && session && poker.phase === 'playing' && poker.toActIndex !== null) {
-      const actor = poker.players[poker.toActIndex];
-      const prevActor =
-        prevPoker && prevPoker.toActIndex !== null ? prevPoker.players[prevPoker.toActIndex] : null;
-      if (actor?.id === session.playerId && prevActor?.id !== session.playerId) {
-        addToast('turn', session.mode === 'local' ? `👉 ${actor.name} ist dran` : '🃏 Du bist dran!');
+        // Alles Weitere weiß nur das Spiel selbst.
+        CLIENT_GAMES[gameId].notify?.(prevState ?? null, state, {
+          playerId: session.playerId,
+          local: session.mode === 'local',
+          toast: addToast,
+        });
       }
     }
 
@@ -170,6 +158,24 @@ export const useStore = create<AppStore>((set, get) => ({
 // Abgeleitete Helfer
 // ---------------------------------------------------------------------------
 
+/**
+ * Der eigene Sitz – spielunabhängig.
+ *
+ * Vorher las das nur `s.game` und lieferte bei Poker `undefined`; die
+ * Poker-Oberfläche suchte sich ihren Spieler deshalb selbst.
+ */
+export function useSeat(): SeatInfo | undefined {
+  return useStore((s) => {
+    if (!s.room || !s.session) return undefined;
+    const state = s.room[s.room.meta.gameId];
+    if (!state) return undefined;
+    return moduleFor(s.room.meta.gameId)
+      .seats(state)
+      .find((p) => p.id === s.session!.playerId);
+  });
+}
+
+/** Monopoly-Spieler mit allen Feldern (Geld, Position …). */
 export function useMe(): Player | undefined {
   return useStore((s) =>
     s.game && s.session ? s.game.players.find((p) => p.id === s.session!.playerId) : undefined
@@ -186,14 +192,10 @@ export function useSeatRotation(): SeatEdge {
 
 export function useIsMyTurn(): boolean {
   return useStore((s) => {
-    if (!s.session) return false;
-    if (s.game && s.game.phase === 'playing') {
-      return s.game.players[s.game.currentPlayer]?.id === s.session.playerId;
-    }
-    if (s.poker && s.poker.phase === 'playing' && s.poker.toActIndex !== null) {
-      return s.poker.players[s.poker.toActIndex]?.id === s.session.playerId;
-    }
-    return false;
+    if (!s.session || !s.room) return false;
+    const state = s.room[s.room.meta.gameId];
+    if (!state) return false;
+    return moduleFor(s.room.meta.gameId).activeSeatId(state) === s.session.playerId;
   });
 }
 

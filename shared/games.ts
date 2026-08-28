@@ -7,7 +7,22 @@
 import type { GameState } from './types';
 import type { PokerView } from './poker/types';
 
-export type GameId = 'monopoly' | 'poker';
+/**
+ * Zustandstyp je Spiel – die EINE Stelle, an der die Spiele-Liste steht.
+ *
+ * `GameId` und `RoomEnvelope` leiten sich daraus ab. Ein neues Spiel wird
+ * hier eingetragen, und der Compiler zeigt danach jede Stelle, die es noch
+ * nicht kennt: jede `Record<GameId, …>`-Tabelle verlangt einen Eintrag.
+ */
+export interface GameStateMap {
+  monopoly: GameState;
+  poker: PokerView;
+}
+
+export type GameId = keyof GameStateMap;
+
+/** Irgendeiner der Spielzustände – für Code, der alle Spiele gleich behandelt. */
+export type AnyGameState = GameStateMap[GameId];
 
 export interface GameInfo {
   id: GameId;
@@ -21,8 +36,8 @@ export interface GameInfo {
   duration: string;
 }
 
-export const GAME_CATALOG: GameInfo[] = [
-  {
+export const GAME_INFOS: Record<GameId, GameInfo> = {
+  monopoly: {
     id: 'monopoly',
     name: 'Monopoly',
     tagline: 'Würfeln, kaufen, bauen – wer bleibt zahlungsfähig?',
@@ -33,7 +48,7 @@ export const GAME_CATALOG: GameInfo[] = [
     maxPlayers: 8,
     duration: '45–120 min',
   },
-  {
+  poker: {
     id: 'poker',
     name: "Texas Hold'em Poker",
     tagline: 'Zwei Karten, fünf in der Mitte – wer blufft am besten?',
@@ -44,10 +59,19 @@ export const GAME_CATALOG: GameInfo[] = [
     maxPlayers: 9,
     duration: '20–90 min',
   },
-];
+};
 
+/** Reihenfolge auf der Startseite. */
+export const GAME_CATALOG: GameInfo[] = Object.values(GAME_INFOS);
+
+/** Kann nicht mehr auf das falsche Spiel zurückfallen. */
 export function getGameInfo(id: GameId): GameInfo {
-  return GAME_CATALOG.find((g) => g.id === id) ?? GAME_CATALOG[0];
+  return GAME_INFOS[id];
+}
+
+/** Ist das eine bekannte Spiel-Kennung? (Eingaben vom Client prüfen) */
+export function isGameId(v: unknown): v is GameId {
+  return typeof v === 'string' && v in GAME_INFOS;
 }
 
 /** Raum-Metadaten, die unabhängig vom laufenden Spiel sind. */
@@ -72,13 +96,15 @@ export interface SpectatorInfo {
  * Die Hülle, die per 'state'-Event an Clients geht. Genau eines der
  * Spiel-Felder ist gesetzt (passend zu meta.gameId). Poker-Sichten sind
  * pro Empfänger redigiert.
+ *
+ * Bewusst benannte Felder statt eines generischen `state: unknown`: so
+ * behält der Client seine Typsicherheit pro Spiel. Über `GameStateMap`
+ * wächst die Hülle automatisch mit, wenn ein Spiel dazukommt.
  */
-export interface RoomEnvelope {
+export type RoomEnvelope = {
   meta: RoomMeta;
   spectators: SpectatorInfo[];
-  monopoly?: GameState;
-  poker?: PokerView;
-}
+} & Partial<GameStateMap>;
 
 /** Eintrag in der öffentlichen Raumliste der Lobby. */
 export interface PublicRoomInfo {

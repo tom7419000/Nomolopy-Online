@@ -7,37 +7,24 @@
  * übersehen kann – deshalb ein dauerhaftes Band statt eines Toasts.
  */
 
+import { moduleFor } from '@shared/registry';
 import { useStore, useSeatRotation } from '../state/store';
 
 export function TurnBanner() {
   const isLocalGame = useStore((s) => s.session?.mode === 'local');
+  const room = useStore((s) => s.room);
   // Bei festen Plätzen ist das Band die Ansage an eine bestimmte Person –
   // also dreht es sich zu ihr, genau wie das Brett darunter.
   const rotation = useSeatRotation();
-  const game = useStore((s) => s.game);
-  const poker = useStore((s) => s.poker);
 
-  if (!isLocalGame) return null;
+  if (!isLocalGame || !room) return null;
 
-  let name: string | null = null;
-  let color = 'var(--accent)';
-  let hint = '';
-
-  if (game && game.phase === 'playing') {
-    const p = game.players[game.currentPlayer];
-    if (p) {
-      name = p.name;
-      color = p.color;
-      hint = p.token;
-    }
-  } else if (poker && poker.phase === 'playing' && poker.toActIndex !== null) {
-    const p = poker.players[poker.toActIndex];
-    if (p) {
-      name = p.name;
-      color = p.color;
-      hint = p.avatar;
-    }
-  }
+  // Über die Registry, damit ein neues Spiel hier nicht stumm leer bleibt.
+  const state = room[room.meta.gameId];
+  const m = moduleFor(room.meta.gameId);
+  const seat = state ? m.seats(state).find((p) => p.id === m.activeSeatId(state)) : undefined;
+  const name = seat?.name ?? null;
+  const color = seat?.color ?? 'var(--accent)';
 
   if (!name) return null;
 
@@ -48,9 +35,7 @@ export function TurnBanner() {
       role="status"
       aria-live="polite"
     >
-      <span className="pass-banner-token" style={{ background: color }} aria-hidden>
-        {hint}
-      </span>
+      <span className="pass-banner-token" style={{ background: color }} aria-hidden />
       <strong>{name}</strong>
       <span>ist dran</span>
       <span className="pass-banner-pass" aria-hidden>

@@ -21,6 +21,16 @@ import {
 } from '../client/src/net/localRoom';
 import { HIDDEN_CARD, pokerTick } from '../shared/poker/engine';
 import type { RoomEnvelope } from '../shared/games';
+import type { GameState } from '../shared/types';
+import type { PokerState } from '../shared/poker/types';
+
+/**
+ * Der Raum hält seinen Zustand seit der Registry unter `state`. Die Tests
+ * greifen weiterhin auf die konkreten Felder zu – das sind die beiden
+ * Zugriffshelfer dafür.
+ */
+const mono = (room: LocalRoom): GameState => room.state as GameState;
+const pkr = (room: LocalRoom): PokerState => room.state as PokerState;
 
 /** Sammelt die veröffentlichten Sichten, wie es die UI täte. */
 function runnerFor(room: LocalRoom, now?: () => number) {
@@ -51,25 +61,25 @@ function pokerRoom(names = ['Anna', 'Ben', 'Clara']) {
 test('Monopoly: Raum mit vier Sitzen in der angegebenen Reihenfolge', () => {
   const room = monopolyRoom();
   assert.equal(room.meta.gameId, 'monopoly');
-  assert.equal(room.monopoly?.players.length, 4);
+  assert.equal(mono(room).players.length, 4);
   assert.deepEqual(
-    room.monopoly?.players.map((p) => p.name),
+    mono(room).players.map((p) => p.name),
     ['Anna', 'Ben', 'Clara', 'Dora']
   );
-  assert.equal(room.poker, null);
+  assert.equal(room.meta.gameId, 'monopoly');
   assert.equal(room.meta.isPublic, false, 'lokale Räume tauchen nie in der Raumliste auf');
 });
 
 test('Leere Namen werden verworfen', () => {
   const room = createLocalRoom({ gameId: 'monopoly', players: ['Anna', '  ', 'Ben'] });
-  assert.equal(room.monopoly?.players.length, 2);
+  assert.equal(mono(room).players.length, 2);
 });
 
 test('Jeder Sitz ist Host – sonst scheitern host-gebundene Aktionen je nach Sitz', () => {
   const room = monopolyRoom();
-  assert.ok(room.monopoly?.players.every((p) => p.isHost));
+  assert.ok(mono(room).players.every((p) => p.isHost));
   const poker = pokerRoom();
-  assert.ok(poker.poker?.players.every((p) => p.isHost));
+  assert.ok(pkr(poker).players.every((p) => p.isHost));
 });
 
 // ---------------------------------------------------------------------------
@@ -83,7 +93,7 @@ test('activeSeatId folgt currentPlayer', () => {
   const { runner } = runnerFor(room);
   runner.start();
 
-  const g = room.monopoly!;
+  const g = mono(room);
   assert.equal(activeSeatId(room), g.players[g.currentPlayer].id);
 
   // Zug künstlich weiterschalten und prüfen, dass der Sitz mitwandert
@@ -96,7 +106,7 @@ test('activeSeatId folgt toActIndex und ist beim Showdown null', () => {
   const { runner } = runnerFor(room);
   runner.start();
 
-  const p = room.poker!;
+  const p = pkr(room);
   assert.equal(activeSeatId(room), p.players[p.toActIndex!].id);
 
   p.toActIndex = null;
@@ -126,7 +136,7 @@ test('Die veröffentlichte Sicht hängt nicht am lebenden Zustand', () => {
   runner.start();
 
   const before = last().env.monopoly!.players[0].money;
-  room.monopoly!.players[0].money = 12345;
+  mono(room).players[0].money = 12345;
 
   assert.equal(last().env.monopoly!.players[0].money, before, 'Kopie, keine Referenz');
 });
@@ -184,11 +194,11 @@ test('Die Zug-Uhr ist am gemeinsamen Gerät abgeschaltet', () => {
   const { runner, last } = runnerFor(room);
   runner.start();
 
-  assert.equal(room.poker!.actionDeadline, null, 'kein Auto-Fold beim Weiterreichen');
+  assert.equal(pkr(room).actionDeadline, null, 'kein Auto-Fold beim Weiterreichen');
   assert.equal(last().env.poker!.actionDeadline, null);
 
   runner.action({ type: 'fold' });
-  assert.equal(room.poker!.actionDeadline, null, 'bleibt auch nach Aktionen aus');
+  assert.equal(pkr(room).actionDeadline, null, 'bleibt auch nach Aktionen aus');
 });
 
 test('pokerTick bringt die Partie über den Showdown hinaus', () => {
@@ -197,19 +207,19 @@ test('pokerTick bringt die Partie über den Showdown hinaus', () => {
   const { runner, published } = runnerFor(room, () => clock);
   runner.start();
 
-  const handBefore = room.poker!.handNumber;
+  const handBefore = pkr(room).handNumber;
 
   // Heads-up: einer foldet, die Hand endet, nextHandAt wird gesetzt.
   runner.action({ type: 'fold' });
-  assert.notEqual(room.poker!.nextHandAt, null, 'nach dem Handende läuft eine Pause');
+  assert.notEqual(pkr(room).nextHandAt, null, 'nach dem Handende läuft eine Pause');
 
   // Die Zeit vorspulen und den Takt von Hand auslösen – im Test ohne Timer.
-  clock = room.poker!.nextHandAt! + 1;
+  clock = pkr(room).nextHandAt! + 1;
   const publishedBefore = published.length;
-  assert.equal(pokerTick(room.poker!, clock), true, 'pokerTick meldet die Änderung');
+  assert.equal(pokerTick(pkr(room), clock), true, 'pokerTick meldet die Änderung');
   runner.publish();
 
-  assert.ok(room.poker!.handNumber > handBefore, 'die nächste Hand hat begonnen');
+  assert.ok(pkr(room).handNumber > handBefore, 'die nächste Hand hat begonnen');
   assert.ok(published.length > publishedBefore, 'die neue Hand wurde veröffentlicht');
 
   runner.stop();
@@ -265,9 +275,9 @@ test('Rematch erst nach Spielende', () => {
 
   assert.equal(runner.rematch().ok, false, 'die laufende Partie bleibt unangetastet');
 
-  room.monopoly!.phase = 'ended';
+  mono(room).phase = 'ended';
   assert.equal(runner.rematch().ok, true);
-  assert.equal(room.monopoly!.phase, 'playing', 'neue Runde läuft');
+  assert.equal(mono(room).phase, 'playing', 'neue Runde läuft');
 });
 
 test('stop() räumt den Poker-Takt ab', () => {
@@ -283,12 +293,12 @@ test('stop() räumt den Poker-Takt ab', () => {
 
 test('Auktion: der aktive Sitz wandert zum Bieter, nicht zum Spieler am Zug', () => {
   const room = monopolyRoom(['Anna', 'Ben', 'Clara']);
-  room.monopoly!.rules.auctionOnSkip = true;
-  room.monopoly!.rules.debugMode = true;
+  mono(room).rules.auctionOnSkip = true;
+  mono(room).rules.debugMode = true;
   const { runner } = runnerFor(room);
   runner.start();
 
-  const g = room.monopoly!;
+  const g = mono(room);
   g.currentPlayer = 0;
   g.turnPhase = 'awaiting-roll';
 
@@ -310,13 +320,13 @@ test('Auktion: der aktive Sitz wandert zum Bieter, nicht zum Spieler am Zug', ()
 
 test('Auktion: am geteilten Gerät läuft keine Bedenkzeit', () => {
   const room = monopolyRoom(['Anna', 'Ben', 'Clara']);
-  room.monopoly!.rules.auctionOnSkip = true;
-  room.monopoly!.rules.auctionBidSeconds = 30;
-  room.monopoly!.rules.debugMode = true;
+  mono(room).rules.auctionOnSkip = true;
+  mono(room).rules.auctionBidSeconds = 30;
+  mono(room).rules.debugMode = true;
   const { runner } = runnerFor(room);
   runner.start();
 
-  const g = room.monopoly!;
+  const g = mono(room);
   g.currentPlayer = 0;
   g.turnPhase = 'awaiting-roll';
   runner.action({ type: 'setDice', dice: [2, 3] });
@@ -333,7 +343,7 @@ test('Auktion: am geteilten Gerät läuft keine Bedenkzeit', () => {
 test('Weiterreichen ist die Vorgabe – keine Sitzordnung, keine Drehung', () => {
   const room = monopolyRoom();
   assert.equal(room.seating, null);
-  assert.equal(rotationFor(room.seating, room.monopoly!.players[0].id), 0);
+  assert.equal(rotationFor(room.seating, mono(room).players[0].id), 0);
 });
 
 test('Feste Plätze: jeder Sitz bekommt eine eigene Kante', () => {
@@ -355,7 +365,7 @@ test('Feste Plätze: zwei Spieler sitzen sich gegenüber', () => {
     players: ['Anna', 'Ben'],
     seatMode: 'fixed',
   });
-  const [a, b] = room.monopoly!.players.map((p) => room.seating!.edges[p.id]);
+  const [a, b] = mono(room).players.map((p) => room.seating!.edges[p.id]);
   assert.deepEqual([a, b], [0, 180], 'unten und oben, nicht über Eck');
 });
 
@@ -366,7 +376,7 @@ test('Feste Plätze: eigene Kantenwahl schlägt die Vorbelegung', () => {
     seatMode: 'fixed',
     seatEdges: [90, 270, 0],
   });
-  const ids = room.monopoly!.players.map((p) => p.id);
+  const ids = mono(room).players.map((p) => p.id);
   assert.equal(room.seating!.edges[ids[0]], 90);
   assert.equal(room.seating!.edges[ids[1]], 270);
   assert.equal(room.seating!.edges[ids[2]], 0);
@@ -381,7 +391,7 @@ test('Der Drehwinkel folgt dem Sitz, der gerade handelt', () => {
   const { runner } = runnerFor(room);
   runner.start();
 
-  const g = room.monopoly!;
+  const g = mono(room);
   for (let i = 0; i < g.players.length; i++) {
     g.currentPlayer = i;
     const seat = activeSeatId(room)!;
@@ -425,6 +435,6 @@ test('Feste Plätze überleben einen Neuaufbau des Raums (Persistenz-Form)', () 
   const restored: LocalRoom = { ...room, seating: stored.seating };
 
   assert.deepEqual(restored.seating, room.seating);
-  const seat = room.poker!.players[1].id;
+  const seat = pkr(room).players[1].id;
   assert.equal(rotationFor(restored.seating, seat), room.seating!.edges[seat]);
 });

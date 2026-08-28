@@ -250,6 +250,10 @@ decken alle verbliebenen Spieler auf, Rebuy nur zwischen zwei Händen.
 
 ```
 shared/            Engines & Typen (laufen auf Server UND Client)
+  games.ts           Spiele-Liste (GameStateMap), Raum-Metadaten, RoomEnvelope
+  registry.ts        Vertrag jedes Spiels gegenüber der Plattform + GAME_MODULES
+  monopoly/module.ts Monopoly als Plattform-Modul (dünner Adapter)
+  poker/module.ts    Poker als Plattform-Modul (dünner Adapter)
   types.ts           Monopoly-Typen: GameState, Player, TileDef, Aktionen …
   engine.ts          Monopoly-Spiellogik: applyAction(state, playerId, action)
   boards.ts          Brettstruktur + 4 eingebaute Editionen
@@ -300,8 +304,13 @@ tests/
   alle Züge werden serverseitig validiert (Cheaten zwecklos). Bei Poker wird
   der Zustand pro Empfänger redigiert (kein Deck, fremde Karten verdeckt).
 - **Ein Raum = ein Spiel**: Die Plattform-Schicht (Räume, Chat, Raumliste)
-  ist spielunabhängig; neue Spiele docken als eigene Engine + eigener
-  Client-Ordner an (`shared/games.ts` → Katalog-Eintrag, `games/<id>/` → UI).
+  ist spielunabhängig. Ein neues Spiel wird an genau EINER Stelle eingetragen –
+  in `GameStateMap` (`shared/games.ts`). Danach verlangt der Compiler die drei
+  fehlenden Einträge: den Katalog (`GAME_INFOS`), die Engine-Anbindung
+  (`GAME_MODULES` in `shared/registry.ts`) und die Oberfläche (`CLIENT_GAMES`
+  in `client/src/games/registry.tsx`). Vorher waren es rund siebzig
+  `game ? … : poker ? …`-Ketten, an denen ein drittes Spiel stumm
+  durchgefallen wäre.
 - **Nickname statt Accounts**: bewusst ohne Registrierung/E-Mail – der Name
   wird lokal gespeichert. Accounts, Freundeslisten, Achievements und weitere
   Spiele (Kniffel, Rommé …) sind auf der Roadmap.

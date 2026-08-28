@@ -172,13 +172,13 @@ function ActionBar({ view, me }: { view: PokerView; me: PokerPlayer }) {
     return (
       <div className="poker-actions">
         {view.rules.allowRebuy && me.chips === 0 && (
-          <button className="btn primary" onClick={() => api.pokerAction({ type: 'rebuy' })}>
+          <button className="btn primary" onClick={() => api.action({ type: 'rebuy' })}>
             🔄 Rebuy ({fmt(view.rules.buyIn)})
           </button>
         )}
         {me.isHost && (
           <>
-            <button className="btn" onClick={() => api.pokerAction({ type: 'nextHand' })}>
+            <button className="btn" onClick={() => api.action({ type: 'nextHand' })}>
               ⏭ Nächste Hand
             </button>
             {view.rules.allowRebuy && (
@@ -186,7 +186,7 @@ function ActionBar({ view, me }: { view: PokerView; me: PokerPlayer }) {
                 className="btn ghost"
                 onClick={() => {
                   if (window.confirm('Partie beenden? Gewinner ist der größte Stack.')) {
-                    api.pokerAction({ type: 'endGame' });
+                    api.action({ type: 'endGame' });
                   }
                 }}
               >
@@ -220,15 +220,15 @@ function ActionBar({ view, me }: { view: PokerView; me: PokerPlayer }) {
 
   return (
     <div className="poker-actions mine">
-      <button className="btn danger" onClick={() => api.pokerAction({ type: 'fold' })}>
+      <button className="btn danger" onClick={() => api.action({ type: 'fold' })}>
         Fold
       </button>
       {canCheck ? (
-        <button className="btn" onClick={() => api.pokerAction({ type: 'check' })}>
+        <button className="btn" onClick={() => api.action({ type: 'check' })}>
           Check
         </button>
       ) : (
-        <button className="btn primary" onClick={() => api.pokerAction({ type: 'call' })}>
+        <button className="btn primary" onClick={() => api.action({ type: 'call' })}>
           Call {fmt(callAmount)}
           {callAmount === me.chips && ' (All-In)'}
         </button>
@@ -266,12 +266,12 @@ function ActionBar({ view, me }: { view: PokerView; me: PokerPlayer }) {
               Pot
             </button>
           </div>
-          <button className="btn primary" onClick={() => api.pokerAction({ type: 'raise', to: clampedRaise })}>
+          <button className="btn primary" onClick={() => api.action({ type: 'raise', to: clampedRaise })}>
             {view.currentBet === 0 ? 'Bet' : 'Raise'} {fmt(clampedRaise)}
           </button>
         </div>
       )}
-      <button className="btn allin" onClick={() => api.pokerAction({ type: 'allin' })}>
+      <button className="btn allin" onClick={() => api.action({ type: 'allin' })}>
         All-In {fmt(maxTo)}
       </button>
     </div>
@@ -429,7 +429,7 @@ export function PokerTable() {
               title="Endgültig aufgeben"
               onClick={() => {
                 if (window.confirm('Wirklich aufgeben? Deine Chips verlassen mit dir den Tisch.')) {
-                  api.pokerAction({ type: 'resign' });
+                  api.action({ type: 'resign' });
                 }
               }}
             >

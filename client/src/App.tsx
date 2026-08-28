@@ -5,8 +5,7 @@ import { navigate, roomHash, useHashRoute } from './hooks/useHashRoute';
 import { Home } from './pages/Home';
 import { JoinRoom } from './pages/JoinRoom';
 import { RoomPage } from './pages/Room';
-import { GameTable } from './games/monopoly/GameTable';
-import { PokerTable } from './games/poker/PokerTable';
+import { CLIENT_GAMES } from './games/registry';
 import { AdminPanel } from './games/monopoly/AdminPanel';
 import { CardModal, DebugDialog, PropertyDialog, SavesDialog, TradeDialog } from './games/monopoly/Dialogs';
 import { InstallBanner } from './components/InstallBanner';
@@ -44,7 +43,10 @@ export default function App() {
 
   let screen: React.ReactNode;
   if (room && phase && phase !== 'lobby') {
-    screen = game ? <GameTable /> : <PokerTable />;
+    // Über die Registry statt über einen Ternary: ein unbekanntes Spiel
+    // wäre sonst stumm als Poker gerendert und dort abgestürzt.
+    const Table = CLIENT_GAMES[room.meta.gameId].Table;
+    screen = <Table />;
   } else if (room) {
     screen = <RoomPage />;
   } else if (route.page === 'room') {

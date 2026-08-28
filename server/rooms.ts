@@ -10,22 +10,8 @@
  */
 
 import type { Server, Socket } from 'socket.io';
-import type { BoardEdition, GameAction, GameState, RuleSet } from '../shared/types';
-import {
-  addPlayer,
-  addChat,
-  applyAction,
-  createGame,
-  getPlayer,
-  log,
-  removeLobbyPlayer,
-  rerollAppearance,
-  resetToLobby,
-  startGame,
-  auctionBidderId,
-  auctionTick,
-  nextDeadline as monopolyNextDeadline,
-} from '../shared/engine';
+import type { GameState } from '../shared/types';
+import { log } from '../shared/engine';
 import { getPreset, RULE_PRESETS } from '../shared/rules';
 import { randomId, randomRoomCode, PLAYER_COLORS } from '../shared/util';
 import {
@@ -34,6 +20,8 @@ import {
   MAX_ROOM_DESC,
   MAX_ROOM_NAME,
   MAX_ROOMS,
+  isGameId,
+  type AnyGameState,
   type GameId,
   type LobbyChatMessage,
   type PublicRoomInfo,
@@ -41,28 +29,41 @@ import {
   type RoomMeta,
   type SpectatorInfo,
 } from '../shared/games';
-import {
-  addPokerChat,
-  addPokerPlayer,
-  applyPokerAction,
-  createPoker,
-  getPokerPlayer,
-  pokerLog,
-  pokerTick,
-  removePokerLobbyPlayer,
-  resetPokerToLobby,
-  startPoker,
-  viewFor,
-} from '../shared/poker/engine';
-import { sanitizePokerRules } from '../shared/poker/rules';
-import type { PokerAction, PokerState } from '../shared/poker/types';
+import { pokerLog } from '../shared/poker/engine';
+import { moduleFor, type SeatInfo } from '../shared/registry';
 import * as store from './store';
+
+/** Was Spiele beim Anlegen und Umkonfigurieren von außen brauchen. */
+const deps = {
+  editions: () => store.allEditions(),
+  preset: (id: string) => getPreset(id) as unknown as { id: string; rules: Record<string, unknown> },
+};
+
+/**
+ * Protokollzeile ins Spiel schreiben, egal welches Spiel.
+ * (Die Engines haben je eigene log-Funktionen; die Plattform braucht nur eine.)
+ */
+/**
+ * Monopoly-Zustand des Raums, sonst null.
+ *
+ * Spielstände bleiben bewusst Monopoly-eigen (`caps.saveLoad`): ein
+ * Speicherformat, das eine ganze Edition einbettet, für Spiele zu
+ * verallgemeinern, die eine halbe Stunde dauern, wäre reine Altlast.
+ */
+function monopolyState(room: Room): GameState | null {
+  return room.meta.gameId === 'monopoly' ? (room.state as GameState) : null;
+}
+
+function roomLog(room: Room, text: string, playerId?: string): void {
+  if (room.meta.gameId === 'poker') pokerLog(room.state as never, 'system', text, playerId);
+  else log(room.state as never, 'system', text, playerId);
+}
 
 interface Room {
   code: string;
   meta: RoomMeta;
-  monopoly: GameState | null;
-  poker: PokerState | null;
+  /** Der Zustand des Spiels, das dieser Raum spielt (siehe `meta.gameId`). */
+  state: AnyGameState;
   spectators: SpectatorInfo[];
   /** memberId (Spieler ODER Zuschauer) → geheimes Token für Reconnect */
   secrets: Map<string, string>;
@@ -99,32 +100,33 @@ function cleanText(v: unknown, max: number): string {
 // Zustand verteilen
 // ---------------------------------------------------------------------------
 
+/** Das Modul, das dieser Raum spielt. */
+function mod(room: Room) {
+  return moduleFor(room.meta.gameId);
+}
+
 function envelopeFor(room: Room, viewerId: string | null): RoomEnvelope {
+  const m = mod(room);
+  const view = m.redact ? m.redact(room.state, viewerId) : room.state;
   return {
     meta: room.meta,
     spectators: room.spectators,
-    monopoly: room.monopoly ?? undefined,
-    poker: room.poker ? viewFor(room.poker, viewerId) : undefined,
-  };
+    [room.meta.gameId]: view,
+  } as RoomEnvelope;
 }
 
 function roomPhase(room: Room): 'lobby' | 'playing' | 'ended' {
-  return room.monopoly?.phase ?? room.poker?.phase ?? 'lobby';
+  return mod(room).phase(room.state);
 }
 
-function roomPlayers(room: Room): { id: string; name: string; isHost: boolean; connected: boolean }[] {
-  return (room.monopoly?.players ?? room.poker?.players ?? []).map((p) => ({
-    id: p.id,
-    name: p.name,
-    isHost: p.isHost,
-    connected: p.connected,
-  }));
+function roomPlayers(room: Room): SeatInfo[] {
+  return mod(room).seats(room.state);
 }
 
 function broadcast(io: Server, room: Room): void {
   room.lastActivity = Date.now();
-  if (room.poker) {
-    // Redigierte Sicht pro Empfänger; Zuschauer & Unbekannte sehen keine Hole Cards
+  if (mod(room).redactPerViewer) {
+    // Verdeckte Information: die Sicht muss pro Empfänger gerechnet werden.
     for (const [memberId, socks] of room.sockets) {
       const env = envelopeFor(room, memberId);
       for (const s of socks) s.emit('state', env);
@@ -141,61 +143,22 @@ function broadcast(io: Server, room: Room): void {
 // Raum-Timer (Poker-Bedenkzeit, Auktions-Bedenkzeit)
 // ---------------------------------------------------------------------------
 
-/** Getrennte Spieler bekommen nur eine kurze Gnadenfrist statt der vollen Bedenkzeit. */
-const DISCONNECTED_GRACE_MS = 5000;
-
-/** Nächste Frist des Raums, oder null wenn gerade keine Uhr läuft. */
-function roomDeadline(room: Room): number | null {
-  const p = room.poker;
-  if (p && p.phase === 'playing') {
-    if (p.street === 'showdown' && p.nextHandAt !== null) return p.nextHandAt;
-    if (p.toActIndex !== null && p.actionDeadline !== null) {
-      const actor = p.players[p.toActIndex];
-      if (actor && !actor.connected) {
-        p.actionDeadline = Math.min(p.actionDeadline, Date.now() + DISCONNECTED_GRACE_MS);
-      }
-      return p.actionDeadline;
-    }
-    return null;
-  }
-
-  const g = room.monopoly;
-  if (g && g.phase === 'playing') {
-    // Auktionen brauchen eine eigene Uhr: `forceEndTurn` wirkt nur auf den
-    // aktuellen Spieler und erreicht einen getrennten BIETER nicht – ohne
-    // Frist stünde die Auktion für alle still.
-    const at = monopolyNextDeadline(g);
-    if (at !== null) {
-      const bidder = g.auction ? getPlayer(g, auctionBidderId(g) ?? '') : undefined;
-      if (bidder && !bidder.connected && g.auction) {
-        g.auction.deadline = Math.min(at, Date.now() + DISCONNECTED_GRACE_MS);
-        return g.auction.deadline;
-      }
-      return at;
-    }
-  }
-  return null;
-}
-
-/** Lässt die Zeit im Raum weiterlaufen; true, wenn sich etwas geändert hat. */
-function roomTick(room: Room, now: number): boolean {
-  if (room.poker) return pokerTick(room.poker, now);
-  if (room.monopoly) return auctionTick(room.monopoly, now);
-  return false;
-}
-
 function scheduleRoomTimer(io: Server, room: Room): void {
   if (room.timer) {
     clearTimeout(room.timer);
     room.timer = null;
   }
-  const at = roomDeadline(room);
+  const m = mod(room);
+  if (m.phase(room.state) !== 'playing') return;
+
+  const at = m.deadline(room.state, Date.now());
   if (at === null) return;
 
   room.timer = setTimeout(() => {
     room.timer = null;
+    // Der Raum kann inzwischen abgeräumt oder ersetzt worden sein.
     if (rooms.get(room.code) !== room) return;
-    if (roomTick(room, Date.now())) {
+    if (m.tick(room.state, Date.now())) {
       broadcast(io, room);
     } else {
       scheduleRoomTimer(io, room);
@@ -311,9 +274,7 @@ function isSpectator(room: Room, memberId: string): SpectatorInfo | undefined {
 }
 
 function requireHost(room: Room, memberId: string): boolean {
-  if (room.monopoly) return getPlayer(room.monopoly, memberId)?.isHost === true;
-  if (room.poker) return getPokerPlayer(room.poker, memberId)?.isHost === true;
-  return false;
+  return roomPlayers(room).find((p) => p.id === memberId)?.isHost === true;
 }
 
 /** Mitglied verlässt den Raum (Tab zu / explizit). */
@@ -322,56 +283,27 @@ function handleLeave(io: Server, room: Room, memberId: string, explicit: boolean
   if (spectator) {
     room.spectators = room.spectators.filter((s) => s.id !== memberId);
     room.secrets.delete(memberId);
-    if (room.poker) pokerLog(room.poker, 'system', `👁 ${spectator.name} schaut nicht mehr zu.`);
-  } else if (room.monopoly) {
-    const game = room.monopoly;
-    const player = getPlayer(game, memberId);
+    roomLog(room, `👁 ${spectator.name} schaut nicht mehr zu.`);
+  } else {
+    const m = mod(room);
+    const player = m.seats(room.state).find((p) => p.id === memberId);
     if (!player) return;
-    if (game.phase === 'lobby') {
-      removeLobbyPlayer(game, memberId);
-      room.secrets.delete(memberId);
-    } else {
-      player.connected = false;
-      log(
-        game,
-        'system',
-        explicit ? `${player.name} hat das Spiel verlassen.` : `⚠ Verbindung zu ${player.name} unterbrochen.`,
-        memberId
-      );
-      if (player.isHost) {
-        const next = game.players.find((p) => p.connected && !p.bankrupt && p.id !== memberId);
-        if (next) {
-          player.isHost = false;
-          next.isHost = true;
-          log(game, 'system', `${next.name} ist jetzt Host.`);
-        }
-      }
-    }
-  } else if (room.poker) {
-    const poker = room.poker;
-    const player = getPokerPlayer(poker, memberId);
-    if (!player) return;
-    if (poker.phase === 'lobby') {
-      removePokerLobbyPlayer(poker, memberId);
+
+    if (m.phase(room.state) === 'lobby') {
+      m.removeLobbyPlayer(room.state, memberId);
       room.secrets.delete(memberId);
     } else {
       // Sitz bleibt reserviert – Wiederbeitritt mit demselben Namen möglich.
-      // Abwesende werden vom Timer automatisch gefoldet (Blinds laufen weiter).
-      player.connected = false;
-      pokerLog(
-        poker,
-        'system',
-        explicit ? `${player.name} hat den Tisch verlassen.` : `⚠ Verbindung zu ${player.name} unterbrochen.`,
+      m.setConnected(room.state, memberId, false);
+      roomLog(
+        room,
+        explicit
+          ? `${player.name} hat das Spiel verlassen.`
+          : `⚠ Verbindung zu ${player.name} unterbrochen.`,
         memberId
       );
-      if (player.isHost) {
-        const next = poker.players.find((p) => p.connected && !p.out && p.id !== memberId);
-        if (next) {
-          player.isHost = false;
-          next.isHost = true;
-          pokerLog(poker, 'system', `${next.name} ist jetzt Host.`);
-        }
-      }
+      const next = m.transferHost(room.state, memberId);
+      if (next) roomLog(room, `${next.name} ist jetzt Host.`);
     }
   }
 
@@ -403,7 +335,11 @@ export function registerHandlers(io: Server): void {
         if (rooms.size >= MAX_ROOMS) {
           return reply(cb, { ok: false, error: 'Der Server ist voll – bitte später erneut versuchen.' });
         }
-        const gameId: GameId = payload?.gameId === 'poker' ? 'poker' : 'monopoly';
+        // Unbekannte Kennungen wurden früher still zu Monopoly.
+        if (!isGameId(payload?.gameId)) {
+          return reply(cb, { ok: false, error: 'Unbekanntes Spiel.' });
+        }
+        const gameId: GameId = payload.gameId;
         const info = getGameInfo(gameId);
 
         let code = randomRoomCode();
@@ -426,28 +362,18 @@ export function registerHandlers(io: Server): void {
 
         const playerId = randomId();
         const token = randomId(24);
+        const m = moduleFor(gameId);
         const room: Room = {
           code,
           meta,
-          monopoly: null,
-          poker: null,
+          state: m.create(code, { ...payload }, deps, Date.now()),
           spectators: [],
           secrets: new Map([[playerId, token]]),
           sockets: new Map(),
           lastActivity: Date.now(),
           timer: null,
         };
-
-        if (gameId === 'monopoly') {
-          const edition = store.getEdition(String(payload?.editionId ?? '')) ?? store.allEditions()[0];
-          const presetId = String(payload?.presetId ?? 'classic');
-          const preset = getPreset(presetId);
-          room.monopoly = createGame(code, edition, preset.id, preset.rules);
-          addPlayer(room.monopoly, playerId, name, true);
-        } else {
-          room.poker = createPoker(code, sanitizePokerRules(payload?.pokerRules));
-          addPokerPlayer(room.poker, playerId, name, true);
-        }
+        m.addPlayer(room.state, playerId, name, true);
 
         rooms.set(code, room);
         attach(room, socket, playerId);
@@ -476,9 +402,7 @@ export function registerHandlers(io: Server): void {
           const playerId = randomId();
           const token = randomId(24);
           const finalName = uniqueName(memberNames(room), name);
-          const result = room.monopoly
-            ? addPlayer(room.monopoly, playerId, finalName, false)
-            : addPokerPlayer(room.poker!, playerId, finalName, false);
+          const result = mod(room).addPlayer(room.state, playerId, finalName, false);
           if (!result.ok) return reply(cb, { ok: false, error: result.error });
           room.secrets.set(playerId, token);
           attach(room, socket, playerId);
@@ -488,34 +412,31 @@ export function registerHandlers(io: Server): void {
         }
 
         // Laufendes/beendetes Spiel: getrennten Spieler mit gleichem Namen übernehmen
-        const seat = room.monopoly
-          ? room.monopoly.players.find(
-              (p) => !p.connected && !p.bankrupt && p.name.toLowerCase() === name.toLowerCase()
+        const seat = mod(room).caps.rejoinByName
+          ? roomPlayers(room).find(
+              (p) => !p.connected && !p.eliminated && p.name.toLowerCase() === name.toLowerCase()
             )
-          : room.poker!.players.find(
-              (p) => !p.connected && !p.out && p.name.toLowerCase() === name.toLowerCase()
-            );
+          : undefined;
         if (seat) {
           const token = randomId(24);
           room.secrets.set(seat.id, token);
-          seat.connected = true;
-          if (room.monopoly) log(room.monopoly, 'system', `${seat.name} ist wieder verbunden.`, seat.id);
-          else pokerLog(room.poker!, 'system', `${seat.name} ist wieder verbunden.`, seat.id);
+          mod(room).setConnected(room.state, seat.id, true);
+          roomLog(room, `${seat.name} ist wieder verbunden.`, seat.id);
           attach(room, socket, seat.id);
           reply(cb, { ok: true, code, playerId: seat.id, token, gameId: room.meta.gameId });
           broadcast(io, room);
           return;
         }
 
-        // Poker: Neue Gesichter dürfen zuschauen
-        if (room.poker) {
+        // Manche Spiele nehmen neue Gesichter als Zuschauer auf (Poker, später Jeopardy)
+        if (mod(room).caps.spectators) {
           const spectatorId = randomId();
           const token = randomId(24);
           const finalName = uniqueName(memberNames(room), name);
           room.spectators.push({ id: spectatorId, name: finalName, color: nameColor(finalName) });
           room.secrets.set(spectatorId, token);
           attach(room, socket, spectatorId);
-          pokerLog(room.poker, 'system', `👁 ${finalName} schaut jetzt zu.`);
+          roomLog(room, `👁 ${finalName} schaut jetzt zu.`);
           reply(cb, { ok: true, code, playerId: spectatorId, token, gameId: room.meta.gameId, spectator: true });
           broadcast(io, room);
           return;
@@ -548,12 +469,11 @@ export function registerHandlers(io: Server): void {
           broadcast(io, room);
           return;
         }
-        const player = room.monopoly ? getPlayer(room.monopoly, memberId) : getPokerPlayer(room.poker!, memberId);
+        const player = roomPlayers(room).find((p) => p.id === memberId);
         if (!player) return reply(cb, { ok: false, error: 'Spieler nicht mehr im Spiel.' });
         if (!player.connected) {
-          player.connected = true;
-          if (room.monopoly) log(room.monopoly, 'system', `${player.name} ist wieder verbunden.`, memberId);
-          else pokerLog(room.poker!, 'system', `${player.name} ist wieder verbunden.`, memberId);
+          mod(room).setConnected(room.state, memberId, true);
+          roomLog(room, `${player.name} ist wieder verbunden.`, memberId);
         }
         attach(room, socket, memberId);
         reply(cb, { ok: true, code, playerId: memberId, token, gameId: room.meta.gameId });
@@ -608,38 +528,10 @@ export function registerHandlers(io: Server): void {
         );
       }
 
-      // Monopoly-Einstellungen
-      if (room.monopoly) {
-        const game = room.monopoly;
-        if (payload?.editionId) {
-          const edition = store.getEdition(String(payload.editionId));
-          if (edition) game.edition = structuredClone(edition) as BoardEdition;
-        }
-        if (payload?.presetId) {
-          const preset = getPreset(String(payload.presetId));
-          game.presetId = preset.id;
-          game.rules = { ...preset.rules };
-        }
-        if (payload?.rules && typeof payload.rules === 'object') {
-          const r = payload.rules as Partial<RuleSet>;
-          const rules = game.rules;
-          if (typeof r.startingMoney === 'number') rules.startingMoney = clamp(r.startingMoney, 100, 10000);
-          if (typeof r.goSalary === 'number') rules.goSalary = clamp(r.goSalary, 0, 1000);
-          if (typeof r.jailFine === 'number') rules.jailFine = clamp(r.jailFine, 0, 500);
-          if (typeof r.freeParkingBonus === 'boolean') rules.freeParkingBonus = r.freeParkingBonus;
-          if (typeof r.doubleRentFullGroup === 'boolean') rules.doubleRentFullGroup = r.doubleRentFullGroup;
-          if (typeof r.auctionOnSkip === 'boolean') rules.auctionOnSkip = r.auctionOnSkip;
-          if (typeof r.auctionBidSeconds === 'number') rules.auctionBidSeconds = clamp(r.auctionBidSeconds, 0, 120);
-          if (typeof r.debugMode === 'boolean') rules.debugMode = r.debugMode;
-        }
-      }
-
-      // Poker-Einstellungen
-      if (room.poker && payload?.poker && typeof payload.poker === 'object') {
-        room.poker.rules = sanitizePokerRules({ ...room.poker.rules, ...payload.poker });
-        room.poker.smallBlind = room.poker.rules.smallBlind;
-        room.poker.bigBlind = room.poker.rules.smallBlind * 2;
-      }
+      // Spielspezifische Einstellungen übernimmt das jeweilige Modul –
+      // vorher stand hier eine handgeschriebene Allowlist pro Regelfeld,
+      // die bei jeder neuen Regel vergessen werden konnte.
+      mod(room).configure(room.state, { ...payload }, deps);
 
       reply(cb, { ok: true });
       broadcast(io, room);
@@ -648,8 +540,9 @@ export function registerHandlers(io: Server): void {
     socket.on('lobby:reroll', (_payload, cb) => {
       const ctx = currentRoom(socket);
       if (!ctx) return reply(cb, { ok: false, error: 'Kein Raum.' });
-      if (!ctx.room.monopoly) return reply(cb, { ok: false, error: 'Nur bei Monopoly möglich.' });
-      const result = rerollAppearance(ctx.room.monopoly, ctx.memberId);
+      const reroll = mod(ctx.room).rerollAppearance;
+      if (!reroll) return reply(cb, { ok: false, error: 'Bei diesem Spiel gibt es nichts zu würfeln.' });
+      const result = reroll(ctx.room.state, ctx.memberId);
       reply(cb, { ...result });
       if (result.ok) broadcast(io, ctx.room);
     });
@@ -659,7 +552,7 @@ export function registerHandlers(io: Server): void {
       if (!ctx) return reply(cb, { ok: false, error: 'Kein Raum.' });
       const { room, memberId } = ctx;
       if (!requireHost(room, memberId)) return reply(cb, { ok: false, error: 'Nur der Host kann starten.' });
-      const result = room.monopoly ? startGame(room.monopoly) : startPoker(room.poker!);
+      const result = mod(room).start(room.state, Date.now());
       reply(cb, { ...result });
       if (result.ok) broadcast(io, room);
     });
@@ -681,11 +574,8 @@ export function registerHandlers(io: Server): void {
       if (spectator) {
         room.spectators = room.spectators.filter((s) => s.id !== targetId);
         room.secrets.delete(targetId);
-      } else if (room.monopoly) {
-        removeLobbyPlayer(room.monopoly, targetId);
-        room.secrets.delete(targetId);
-      } else if (room.poker) {
-        removePokerLobbyPlayer(room.poker, targetId);
+      } else {
+        mod(room).removeLobbyPlayer(room.state, targetId);
         room.secrets.delete(targetId);
       }
       if (targetSockets) {
@@ -710,18 +600,12 @@ export function registerHandlers(io: Server): void {
       if (!ctx) return reply(cb, { ok: false, error: 'Kein Raum.' });
       const { room, memberId } = ctx;
       try {
-        if (room.monopoly) {
-          const result = applyAction(room.monopoly, memberId, payload as GameAction);
-          reply(cb, { ...result });
-          if (result.ok) broadcast(io, room);
-        } else if (room.poker) {
-          if (isSpectator(room, memberId)) return reply(cb, { ok: false, error: 'Zuschauer können nicht mitspielen.' });
-          const result = applyPokerAction(room.poker, memberId, payload as PokerAction);
-          reply(cb, { ...result });
-          if (result.ok) broadcast(io, room);
-        } else {
-          reply(cb, { ok: false, error: 'Kein Spiel im Raum.' });
+        if (isSpectator(room, memberId)) {
+          return reply(cb, { ok: false, error: 'Zuschauer können nicht mitspielen.' });
         }
+        const result = mod(room).apply(room.state, memberId, payload, Date.now());
+        reply(cb, { ...result });
+        if (result.ok) broadcast(io, room);
       } catch (e) {
         console.error('game:action', e);
         reply(cb, { ok: false, error: 'Serverfehler bei der Aktion.' });
@@ -732,27 +616,18 @@ export function registerHandlers(io: Server): void {
       const ctx = currentRoom(socket);
       if (!ctx) return reply(cb, { ok: false, error: 'Kein Raum.' });
       const { room, memberId } = ctx;
-      if (room.monopoly) {
-        const result = addChat(room.monopoly, memberId, String(payload?.text ?? ''));
-        reply(cb, { ...result });
-        if (result.ok) broadcast(io, room);
-        return;
-      }
-      if (room.poker) {
-        const spectator = isSpectator(room, memberId);
-        const player = getPokerPlayer(room.poker, memberId);
-        const author = spectator
-          ? { id: spectator.id, name: `👁 ${spectator.name}`, color: spectator.color }
-          : player
-            ? { id: player.id, name: player.name, color: player.color }
-            : null;
-        if (!author) return reply(cb, { ok: false, error: 'Nicht im Raum.' });
-        const result = addPokerChat(room.poker, author, String(payload?.text ?? ''));
-        reply(cb, { ...result });
-        if (result.ok) broadcast(io, room);
-        return;
-      }
-      reply(cb, { ok: false, error: 'Kein Spiel im Raum.' });
+      const spectator = isSpectator(room, memberId);
+      const player = roomPlayers(room).find((p) => p.id === memberId);
+      const author = spectator
+        ? { id: spectator.id, name: `👁 ${spectator.name}`, color: spectator.color }
+        : player
+          ? { id: player.id, name: player.name, color: player.color }
+          : null;
+      if (!author) return reply(cb, { ok: false, error: 'Nicht im Raum.' });
+
+      const result = mod(room).chat(room.state, author, String(payload?.text ?? ''));
+      reply(cb, { ...result });
+      if (result.ok) broadcast(io, room);
     });
 
     socket.on('game:rematch', (_payload, cb) => {
@@ -764,25 +639,15 @@ export function registerHandlers(io: Server): void {
       }
       if (roomPhase(room) !== 'ended') return reply(cb, { ok: false, error: 'Das Spiel läuft noch.' });
 
-      if (room.monopoly) {
-        room.monopoly.players = room.monopoly.players.filter((p) => p.connected);
-        resetToLobby(room.monopoly);
-      } else if (room.poker) {
-        const poker = room.poker;
-        // Getrennte fliegen raus; wer verbunden ist (auch Ausgeschiedene), spielt die neue Runde mit
-        poker.players = poker.players.filter((p) => p.connected);
-        resetPokerToLobby(poker);
-        if (poker.players.length > 0 && !poker.players.some((p) => p.isHost)) {
-          poker.players[0].isHost = true;
-        }
-        // Zuschauer bekommen einen Sitz, solange Platz ist
-        for (const spec of [...room.spectators]) {
-          if (poker.players.length >= room.meta.maxPlayers) break;
-          if (!room.sockets.has(spec.id)) continue;
-          addPokerPlayer(poker, spec.id, spec.name, poker.players.length === 0);
-          room.spectators = room.spectators.filter((s) => s.id !== spec.id);
-        }
-      }
+      mod(room).resetForRematch(room.state, {
+        spectators: room.spectators.map((sp) => ({ id: sp.id, name: sp.name, color: sp.color })),
+        maxPlayers: room.meta.maxPlayers,
+        // Wer einen Sitz bekommen hat, ist kein Zuschauer mehr.
+        onSeated: (id) => {
+          room.spectators = room.spectators.filter((sp) => sp.id !== id);
+        },
+      });
+
       reply(cb, { ok: true });
       broadcast(io, room);
     });
@@ -819,11 +684,12 @@ export function registerHandlers(io: Server): void {
       const ctx = currentRoom(socket);
       if (!ctx) return reply(cb, { ok: false, error: 'Kein Raum.' });
       const { room, memberId } = ctx;
-      if (!room.monopoly) return reply(cb, { ok: false, error: 'Spielstände gibt es nur bei Monopoly.' });
+      const game = monopolyState(room);
+      if (!game) return reply(cb, { ok: false, error: 'Spielstände gibt es nur bei Monopoly.' });
       if (!requireHost(room, memberId)) return reply(cb, { ok: false, error: 'Nur der Host kann speichern.' });
-      if (room.monopoly.phase === 'lobby') return reply(cb, { ok: false, error: 'Es läuft kein Spiel.' });
-      const meta = store.saveGame(room.monopoly);
-      log(room.monopoly, 'system', `💾 Spielstand gespeichert („${meta.name}“).`);
+      if (game.phase === 'lobby') return reply(cb, { ok: false, error: 'Es läuft kein Spiel.' });
+      const meta = store.saveGame(game);
+      log(game, 'system', `💾 Spielstand gespeichert („${meta.name}“).`);
       reply(cb, { ok: true, meta });
       broadcast(io, room);
     });
@@ -841,20 +707,21 @@ export function registerHandlers(io: Server): void {
       const ctx = currentRoom(socket);
       if (!ctx) return reply(cb, { ok: false, error: 'Kein Raum.' });
       const { room, memberId } = ctx;
-      if (!room.monopoly) return reply(cb, { ok: false, error: 'Spielstände gibt es nur bei Monopoly.' });
+      const game = monopolyState(room);
+      if (!game) return reply(cb, { ok: false, error: 'Spielstände gibt es nur bei Monopoly.' });
       if (!requireHost(room, memberId)) return reply(cb, { ok: false, error: 'Nur der Host kann laden.' });
       const saved = store.loadSave(String(payload?.id ?? ''));
       if (!saved) return reply(cb, { ok: false, error: 'Spielstand nicht gefunden.' });
 
-      const hostName = getPlayer(room.monopoly, memberId)?.name.toLowerCase();
+      const hostName = game.players.find((p) => p.id === memberId)?.name.toLowerCase();
       if (!saved.players.some((p) => p.name.toLowerCase() === hostName)) {
         return reply(cb, { ok: false, error: 'Dein Name kommt in diesem Spielstand nicht vor.' });
       }
 
-      const previousPlayers = room.monopoly.players;
+      const previousPlayers = game.players;
       saved.id = room.code;
       for (const p of saved.players) p.connected = false;
-      room.monopoly = saved;
+      room.state = saved;
 
       // Aktuelle Raum-Mitglieder anhand des Namens auf gespeicherte Spieler mappen
       for (const prev of previousPlayers) {
@@ -887,11 +754,11 @@ export function registerHandlers(io: Server): void {
           room.secrets.delete(prev.id);
         }
       }
-      for (const p of room.monopoly.players) p.isHost = false;
-      const hostSeat = room.monopoly.players.find((p) => p.name.toLowerCase() === hostName);
+      for (const p of saved.players) p.isHost = false;
+      const hostSeat = saved.players.find((p) => p.name.toLowerCase() === hostName);
       if (hostSeat) hostSeat.isHost = true;
 
-      log(room.monopoly, 'system', '📂 Spielstand geladen. Getrennte Spieler können mit ihrem Namen wieder beitreten.');
+      log(saved, 'system', '📂 Spielstand geladen. Getrennte Spieler können mit ihrem Namen wieder beitreten.');
       reply(cb, { ok: true });
       broadcast(io, room);
     });
@@ -927,6 +794,3 @@ export function registerHandlers(io: Server): void {
   }, 5 * 60_000).unref();
 }
 
-function clamp(v: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, Math.round(v)));
-}

@@ -12,33 +12,13 @@
  * Verdrahtung mit Store und Speicher liegt in `local.ts`.
  */
 
-import {
-  addChat,
-  addPlayer,
-  applyAction,
-  auctionBidderId,
-  createGame,
-  resetToLobby,
-  startGame,
-} from '@shared/engine';
-import {
-  addPokerChat,
-  addPokerPlayer,
-  applyPokerAction,
-  createPoker,
-  getPokerPlayer,
-  pokerTick,
-  resetPokerToLobby,
-  startPoker,
-  viewFor,
-} from '@shared/poker/engine';
 import { BUILT_IN_EDITIONS } from '@shared/boards';
 import { getPreset } from '@shared/rules';
-import { sanitizePokerRules } from '@shared/poker/rules';
 import { randomId, randomRoomCode } from '@shared/util';
-import type { ActionResult, BoardEdition, GameAction, GameState } from '@shared/types';
-import type { GameId, RoomEnvelope, RoomMeta } from '@shared/games';
-import type { PokerAction, PokerRules, PokerState } from '@shared/poker/types';
+import { getGameInfo, type AnyGameState, type GameId, type RoomEnvelope, type RoomMeta } from '@shared/games';
+import { moduleFor, type GameDeps } from '@shared/registry';
+import type { ActionResult, BoardEdition } from '@shared/types';
+import type { PokerRules } from '@shared/poker/types';
 
 /** Tischkante, an der ein Spieler sitzt – als Drehwinkel der Ansicht. */
 export type SeatEdge = 0 | 90 | 180 | 270;
@@ -88,8 +68,8 @@ export function rotationFor(seating: LocalSeating | null, seatId: string | null)
 
 export interface LocalRoom {
   meta: RoomMeta;
-  monopoly: GameState | null;
-  poker: PokerState | null;
+  /** Zustand des Spiels, das dieser Raum spielt (siehe `meta.gameId`). */
+  state: AnyGameState;
   /** null = klassisches Weiterreichen */
   seating: LocalSeating | null;
 }
@@ -119,9 +99,6 @@ export interface LocalRoomHooks {
 
 const err = (error: string): ActionResult => ({ ok: false, error });
 
-/** Pause nach dem Showdown – länger als online, siehe `publish()`. */
-const LOCAL_SHOWDOWN_PAUSE_MS = 25_000;
-
 // ---------------------------------------------------------------------------
 // Aufbau
 // ---------------------------------------------------------------------------
@@ -129,34 +106,39 @@ const LOCAL_SHOWDOWN_PAUSE_MS = 25_000;
 export function createLocalRoom(opts: LocalRoomOptions): LocalRoom {
   const names = opts.players.map((n) => n.trim()).filter(Boolean);
   const code = randomRoomCode();
+  const info = getGameInfo(opts.gameId);
   const meta: RoomMeta = {
     code,
-    name: opts.roomName?.trim() || (opts.gameId === 'poker' ? 'Lokale Pokerrunde' : 'Lokale Runde'),
+    name: opts.roomName?.trim() || `Lokale ${info.name}-Runde`,
     description: 'Pass & Play an einem Gerät',
     gameId: opts.gameId,
     isPublic: false,
-    maxPlayers: Math.max(names.length, 2),
+    maxPlayers: info.maxPlayers,
     createdAt: Date.now(),
   };
 
-  const room: LocalRoom = { meta, monopoly: null, poker: null, seating: null };
+  const m = moduleFor(opts.gameId);
+  const deps: GameDeps = {
+    // Lokal gibt es nur die eingebauten Editionen – der Katalog kommt sonst
+    // vom Server, und der ist hier bewusst nicht im Spiel.
+    editions: () => (opts.editions?.length ? opts.editions : BUILT_IN_EDITIONS),
+    preset: (id) => getPreset(id) as unknown as { id: string; rules: Record<string, unknown> },
+  };
 
-  if (opts.gameId === 'poker') {
-    const rules = sanitizePokerRules({ ...opts.pokerRules });
-    room.poker = createPoker(code, rules);
-    for (const name of names) addPokerPlayer(room.poker, randomId(), name, true);
-  } else {
-    const editions = opts.editions?.length ? opts.editions : BUILT_IN_EDITIONS;
-    const edition =
-      editions.find((e) => e.id === opts.editionId) ?? editions[0] ?? BUILT_IN_EDITIONS[0];
-    const preset = getPreset(opts.presetId ?? 'classic');
-    room.monopoly = createGame(code, edition, preset.id, preset.rules);
-    for (const name of names) addPlayer(room.monopoly, randomId(), name, true);
-  }
+  const state = m.create(
+    code,
+    { editionId: opts.editionId, presetId: opts.presetId, poker: opts.pokerRules },
+    deps,
+    Date.now()
+  );
+  const room: LocalRoom = { meta, state, seating: null };
+
+  // Jeder Sitz ist Host – Begründung siehe unten.
+  for (const name of names) m.addPlayer(state, randomId(), name, true);
 
   // Sitzordnung erst NACH dem Anlegen: die Spieler-IDs entstehen oben.
   if (opts.seatMode === 'fixed') {
-    const ids = (room.monopoly?.players ?? room.poker?.players ?? []).map((p) => p.id);
+    const ids = m.seats(state).map((p) => p.id);
     const edges = defaultEdges(ids);
     opts.seatEdges?.forEach((deg, i) => {
       if (ids[i]) edges[ids[i]] = deg;
@@ -189,38 +171,18 @@ export function createLocalRoom(opts: LocalRoomOptions): LocalRoom {
  * auch keine Handkarten offen.
  */
 export function activeSeatId(room: LocalRoom): string | null {
-  const g = room.monopoly;
-  if (g) {
-    if (g.phase !== 'playing') return null;
-    // Während einer Auktion bietet reihum jemand anderes als der Spieler,
-    // der am Zug ist – ohne diesen Zweig würden alle Gebote dem aktuellen
-    // Spieler zugeschrieben.
-    if (g.auction) return auctionBidderId(g);
-    // Ein offenes Handelsangebot kann NUR der Empfänger beantworten
-    // (`doRespondTrade` prüft das). Bliebe die Identität beim Anbieter,
-    // ließe sich der Handel am gemeinsamen Gerät nie abschließen – und das
-    // Band oben nennt gleich den Richtigen, an den weiterzureichen ist.
-    if (g.trade) return g.trade.toId;
-    return g.players[g.currentPlayer]?.id ?? null;
-  }
-  const p = room.poker;
-  if (p) {
-    if (p.phase !== 'playing' || p.toActIndex === null) return null;
-    return p.players[p.toActIndex]?.id ?? null;
-  }
-  return null;
+  return moduleFor(room.meta.gameId).activeSeatId(room.state);
 }
 
 /**
  * Der Sitz, unter dessen Identität Aktionen an die Engine gehen. Zwischen den
  * Händen bzw. außerhalb des Spiels handelt Sitz 0 stellvertretend, damit
- * Buttons wie „Nächste Hand" oder „Neue Runde" nie ins Leere laufen.
+ * Knöpfe wie „Nächste Hand" oder „Neue Runde" nie ins Leere laufen.
  */
 function actingSeatId(room: LocalRoom): string | null {
   const active = activeSeatId(room);
   if (active) return active;
-  const players = room.monopoly?.players ?? room.poker?.players ?? [];
-  return players[0]?.id ?? null;
+  return moduleFor(room.meta.gameId).seats(room.state)[0]?.id ?? null;
 }
 
 // ---------------------------------------------------------------------------
@@ -241,15 +203,18 @@ export function buildEnvelope(room: LocalRoom): {
   activeSeatId: string | null;
 } {
   const seat = activeSeatId(room);
-  const env: RoomEnvelope = { meta: room.meta, spectators: [] };
+  const m = moduleFor(room.meta.gameId);
 
-  if (room.monopoly) {
-    env.monopoly = structuredClone(room.monopoly);
-  } else if (room.poker) {
-    // Erst klonen, dann redigieren: viewFor liefert eine flache Kopie, die
-    // sonst Referenzen in den lebenden Zustand behielte.
-    env.poker = viewFor(structuredClone(room.poker), seat);
-  }
+  // Erst klonen, dann redigieren: `redact` liefert eine flache Kopie, die
+  // sonst Referenzen in den lebenden Zustand behielte.
+  const snapshot = structuredClone(room.state);
+  const view = m.redact ? m.redact(snapshot, seat) : snapshot;
+
+  const env = {
+    meta: room.meta,
+    spectators: [],
+    [room.meta.gameId]: view,
+  } as RoomEnvelope;
 
   return { env, activeSeatId: seat };
 }
@@ -277,47 +242,39 @@ export class LocalRoomRunner {
     return this.hooks.now?.() ?? Date.now();
   }
 
-  /** Sicht bauen, veröffentlichen und den Poker-Takt neu stellen. */
+  /** Sicht bauen, veröffentlichen und die Uhr neu stellen. */
   publish(): void {
     if (this.stopped) return;
-    // Die Zug-Uhr gilt am gemeinsamen Gerät nicht: ein Auto-Fold, weil das
-    // Tablet gerade weitergereicht wird, wäre die falsche Strafe.
-    // Am gemeinsamen Gerät kann sich niemand „trennen", und ein Auto-Pass
-    // beim Weiterreichen wäre die falsche Strafe.
-    if (this.room.monopoly?.auction) this.room.monopoly.auction.deadline = null;
-    if (this.room.poker) {
-      this.room.poker.actionDeadline = null;
-      // Neun Sekunden reichen online, wo jeder auf seinen Bildschirm schaut.
-      // Am Tisch wollen alle die aufgedeckten Karten in Ruhe sehen.
-      if (this.room.poker.nextHandAt !== null) {
-        const min = this.now() + LOCAL_SHOWDOWN_PAUSE_MS;
-        if (this.room.poker.nextHandAt < min) this.room.poker.nextHandAt = min;
-      }
-    }
+    // Am gemeinsamen Gerät gelten andere Zeitregeln (keine Zuguhr, längere
+    // Showdown-Pause) – was genau, weiß nur das Spiel selbst.
+    moduleFor(this.room.meta.gameId).localAdjust?.(this.room.state, this.now());
     const { env, activeSeatId: seat } = buildEnvelope(this.room);
     this.hooks.publish(env, seat);
     this.scheduleTick();
   }
 
   /**
-   * Poker-Takt. Ohne ihn hinge die Partie nach dem Showdown für immer, weil
-   * `nextHandAt` nie ausgewertet würde (Vorbild: `server/rooms.ts`).
+   * Zeitgesteuerte Übergänge. Ohne sie hinge Poker nach dem Showdown für
+   * immer, weil `nextHandAt` nie ausgewertet würde (Vorbild: `server/rooms.ts`).
    */
   private scheduleTick(): void {
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = null;
     }
-    const p = this.room.poker;
-    if (this.stopped || !p || p.nextHandAt === null) return;
+    if (this.stopped) return;
+    const m = moduleFor(this.room.meta.gameId);
+    if (m.phase(this.room.state) !== 'playing') return;
 
-    const delay = Math.max(50, p.nextHandAt - this.now());
+    const at = m.deadline(this.room.state, this.now());
+    if (at === null) return;
+
     this.timer = setTimeout(() => {
       this.timer = null;
       if (this.stopped) return;
-      if (pokerTick(p, this.now())) this.publish();
+      if (m.tick(this.room.state, this.now())) this.publish();
       else this.scheduleTick();
-    }, delay);
+    }, Math.max(50, at - this.now()));
     // Im Node-Testlauf darf der Timer den Prozess nicht offen halten.
     (this.timer as unknown as { unref?: () => void }).unref?.();
   }
@@ -334,24 +291,15 @@ export class LocalRoomRunner {
   // -- Aktionen ------------------------------------------------------------
 
   start(): ActionResult {
-    const r = this.room.monopoly
-      ? startGame(this.room.monopoly)
-      : this.room.poker
-        ? startPoker(this.room.poker, this.now())
-        : err('Kein Spiel im Raum.');
+    const r = moduleFor(this.room.meta.gameId).start(this.room.state, this.now());
     if (r.ok) this.publish();
     return r;
   }
 
-  action(action: GameAction | PokerAction): ActionResult {
+  action(action: unknown): ActionResult {
     const seat = actingSeatId(this.room);
     if (!seat) return err('Kein aktiver Spieler.');
-
-    const r = this.room.monopoly
-      ? applyAction(this.room.monopoly, seat, action as GameAction)
-      : this.room.poker
-        ? applyPokerAction(this.room.poker, seat, action as PokerAction, this.now())
-        : err('Kein Spiel im Raum.');
+    const r = moduleFor(this.room.meta.gameId).apply(this.room.state, seat, action, this.now());
     if (r.ok) this.publish();
     return r;
   }
@@ -359,37 +307,26 @@ export class LocalRoomRunner {
   chat(text: string): ActionResult {
     const seat = actingSeatId(this.room);
     if (!seat) return err('Kein aktiver Spieler.');
-
-    let r: ActionResult;
-    if (this.room.monopoly) {
-      r = addChat(this.room.monopoly, seat, text);
-    } else if (this.room.poker) {
-      const p = getPokerPlayer(this.room.poker, seat);
-      if (!p) return err('Kein aktiver Spieler.');
-      r = addPokerChat(this.room.poker, { id: p.id, name: p.name, color: p.color }, text);
-    } else {
-      return err('Kein Spiel im Raum.');
-    }
+    const m = moduleFor(this.room.meta.gameId);
+    const p = m.seats(this.room.state).find((x) => x.id === seat);
+    if (!p) return err('Kein aktiver Spieler.');
+    const r = m.chat(this.room.state, { id: p.id, name: p.name, color: p.color }, text);
     if (r.ok) this.publish();
     return r;
   }
 
   /** Neue Runde mit derselben Besetzung. */
   rematch(): ActionResult {
-    if (this.room.monopoly) {
-      if (this.room.monopoly.phase !== 'ended') return err('Die Partie läuft noch.');
-      resetToLobby(this.room.monopoly);
-      const r = startGame(this.room.monopoly);
-      if (r.ok) this.publish();
-      return r;
-    }
-    if (this.room.poker) {
-      if (this.room.poker.phase !== 'ended') return err('Die Partie läuft noch.');
-      resetPokerToLobby(this.room.poker);
-      const r = startPoker(this.room.poker, this.now());
-      if (r.ok) this.publish();
-      return r;
-    }
-    return err('Kein Spiel im Raum.');
+    const m = moduleFor(this.room.meta.gameId);
+    if (m.phase(this.room.state) !== 'ended') return err('Die Partie läuft noch.');
+    // Lokal gibt es keine Zuschauer, die nachrücken könnten.
+    m.resetForRematch(this.room.state, {
+      spectators: [],
+      maxPlayers: this.room.meta.maxPlayers,
+      onSeated: () => {},
+    });
+    const r = m.start(this.room.state, this.now());
+    if (r.ok) this.publish();
+    return r;
   }
 }

@@ -5,13 +5,14 @@
 
 import { useMemo, useState } from 'react';
 import { GAME_CATALOG, getGameInfo, type GameId, type GameInfo } from '@shared/games';
-import { DEFAULT_POKER_RULES, POKER_LIMITS } from '@shared/poker/rules';
+import { DEFAULT_POKER_RULES } from '@shared/poker/rules';
 import type { PokerRules } from '@shared/poker/types';
 import { api } from '../net';
 import { loadName, saveName, useStore } from '../state/store';
 import { Chat } from '../components/Chat';
 import { Modal } from '../components/Modal';
 import { LocalSetup } from './LocalSetup';
+import { CLIENT_GAMES } from '../games/registry';
 
 function GameCard({
   info,
@@ -57,8 +58,7 @@ function CreateRoomDialog({
   onClose: () => void;
 }) {
   const info = getGameInfo(gameId);
-  const editions = useStore((s) => s.editions);
-  const presets = useStore((s) => s.presets);
+  const CreateFields = CLIENT_GAMES[gameId].CreateFields;
   const [roomName, setRoomName] = useState(`${name}s ${info.name}-Runde`);
   const [description, setDescription] = useState('');
   const [isPublic, setIsPublic] = useState(false);
@@ -84,9 +84,6 @@ function CreateRoomDialog({
     setBusy(false);
     if (r.ok) onClose();
   }
-
-  const edition = editions.find((e) => e.id === editionId);
-  const preset = presets.find((p) => p.id === presetId);
 
   return (
     <Modal title={`${info.emoji} ${info.name}-Raum erstellen`} onClose={onClose}>
@@ -122,98 +119,14 @@ function CreateRoomDialog({
         </label>
       </div>
 
-      {gameId === 'monopoly' && (
-        <>
-          <label className="field">
-            <span>Edition</span>
-            <select className="input" value={editionId} onChange={(e) => setEditionId(e.target.value)}>
-              {editions.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.name}
-                  {e.builtIn ? '' : ' (eigene)'}
-                </option>
-              ))}
-            </select>
-          </label>
-          {edition?.description && <p className="hint">{edition.description}</p>}
-          <label className="field">
-            <span>Regel-Preset</span>
-            <select className="input" value={presetId} onChange={(e) => setPresetId(e.target.value)}>
-              {presets.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          {preset && <p className="hint">{preset.description}</p>}
-        </>
-      )}
-
-      {gameId === 'poker' && (
-        <>
-          <div className="field-row">
-            <label className="field">
-              <span>Buy-in (Chips)</span>
-              <input
-                type="number"
-                className="input small"
-                min={POKER_LIMITS.buyIn.min}
-                max={POKER_LIMITS.buyIn.max}
-                step={POKER_LIMITS.buyIn.step}
-                value={poker.buyIn}
-                onChange={(e) => setPoker({ ...poker, buyIn: Number(e.target.value) })}
-              />
-            </label>
-            <label className="field">
-              <span>Small Blind</span>
-              <input
-                type="number"
-                className="input small"
-                min={POKER_LIMITS.smallBlind.min}
-                max={POKER_LIMITS.smallBlind.max}
-                step={POKER_LIMITS.smallBlind.step}
-                value={poker.smallBlind}
-                onChange={(e) => setPoker({ ...poker, smallBlind: Number(e.target.value) })}
-              />
-            </label>
-          </div>
-          <div className="field-row">
-            <label className="field">
-              <span>Blinds erhöhen (min, 0 = nie)</span>
-              <input
-                type="number"
-                className="input small"
-                min={POKER_LIMITS.blindIncreaseMinutes.min}
-                max={POKER_LIMITS.blindIncreaseMinutes.max}
-                step={POKER_LIMITS.blindIncreaseMinutes.step}
-                value={poker.blindIncreaseMinutes}
-                onChange={(e) => setPoker({ ...poker, blindIncreaseMinutes: Number(e.target.value) })}
-              />
-            </label>
-            <label className="field">
-              <span>Bedenkzeit (Sek.)</span>
-              <input
-                type="number"
-                className="input small"
-                min={POKER_LIMITS.actionTimeoutSec.min}
-                max={POKER_LIMITS.actionTimeoutSec.max}
-                step={POKER_LIMITS.actionTimeoutSec.step}
-                value={poker.actionTimeoutSec}
-                onChange={(e) => setPoker({ ...poker, actionTimeoutSec: Number(e.target.value) })}
-              />
-            </label>
-          </div>
-          <label className="rule-row boolean">
-            <span>Rebuy erlaubt (Pleite-Spieler kaufen sich neu ein)</span>
-            <input
-              type="checkbox"
-              checked={poker.allowRebuy}
-              onChange={(e) => setPoker({ ...poker, allowRebuy: e.target.checked })}
-            />
-          </label>
-        </>
-      )}
+      <CreateFields
+        editionId={editionId}
+        setEditionId={setEditionId}
+        presetId={presetId}
+        setPresetId={setPresetId}
+        poker={poker as unknown as Record<string, unknown>}
+        setPoker={(v) => setPoker(v as unknown as PokerRules)}
+      />
 
       <button className="btn primary big" disabled={busy} onClick={create}>
         {info.emoji} Raum erstellen

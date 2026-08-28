@@ -6,13 +6,12 @@
  * und die Partie überlebt einen Reload.
  */
 
-import type { BoardEdition, GameAction } from '@shared/types';
-import type { GameId, RoomEnvelope } from '@shared/games';
-import type { PokerAction, PokerRules, PokerState } from '@shared/poker/types';
-import type { GameState } from '@shared/types';
+import type { BoardEdition } from '@shared/types';
+import type { AnyGameState, GameId, RoomEnvelope } from '@shared/games';
+import type { PokerRules } from '@shared/poker/types';
 import { useStore } from '../state/store';
 import { LOCAL_GAME_KEY, setMode } from './mode';
-import { resumeSocket, suspendSocket } from './socket';
+import { resumeSocket, suspendSocket, type SocketApi } from './socket';
 import {
   createLocalRoom,
   LocalRoomRunner,
@@ -27,9 +26,19 @@ const STORE_VERSION = 2;
 interface StoredLocal {
   v: number;
   meta: LocalRoom['meta'];
-  monopoly?: GameState;
-  poker?: PokerState;
+  /** Zustand des Spiels (v1 hatte stattdessen `monopoly` / `poker`). */
+  state?: AnyGameState;
   seating?: LocalSeating | null;
+  savedAt: number;
+}
+
+/** Die alte Form – nur noch für die Migration. */
+interface StoredLocalV1 {
+  v: 1;
+  meta: LocalRoom['meta'];
+  monopoly?: AnyGameState;
+  poker?: AnyGameState;
+  seating?: null;
   savedAt: number;
 }
 
@@ -52,8 +61,7 @@ function persist(room: LocalRoom): void {
       meta: room.meta,
       savedAt: Date.now(),
       seating: room.seating,
-      ...(room.monopoly ? { monopoly: room.monopoly } : {}),
-      ...(room.poker ? { poker: room.poker } : {}),
+      state: room.state,
     };
     localStorage.setItem(LOCAL_GAME_KEY, JSON.stringify(payload));
     storageWarned = false;
@@ -79,13 +87,21 @@ function readStored(): StoredLocal | null {
   try {
     const raw = localStorage.getItem(LOCAL_GAME_KEY);
     if (!raw) return null;
-    const s = JSON.parse(raw) as StoredLocal;
-    if (!s?.meta) return null;
-    if (!s.monopoly && !s.poker) return null;
-    // v1 kannte noch keine Sitzordnung. Eine laufende Partie deswegen zu
-    // verwerfen wäre die schlechteste aller Antworten – also anheben.
-    if (s.v === 1) return { ...s, v: STORE_VERSION, seating: null };
-    if (s.v !== STORE_VERSION) return null;
+    const raw1 = JSON.parse(raw) as StoredLocal | StoredLocalV1;
+    if (!raw1?.meta) return null;
+
+    // v1 hatte je Spiel ein eigenes Feld und noch keine Sitzordnung. Eine
+    // laufende Partie deswegen zu verwerfen wäre die schlechteste aller
+    // Antworten – also anheben statt löschen.
+    if (raw1.v === 1) {
+      const old = raw1 as StoredLocalV1;
+      const state = old.monopoly ?? old.poker;
+      if (!state) return null;
+      return { v: STORE_VERSION, meta: old.meta, state, seating: null, savedAt: old.savedAt };
+    }
+
+    const s = raw1 as StoredLocal;
+    if (s.v !== STORE_VERSION || !s.state) return null;
     return s;
   } catch {
     return null;
@@ -191,8 +207,7 @@ export function restoreLocalGame(): boolean {
 
   const room: LocalRoom = {
     meta: stored.meta,
-    monopoly: stored.monopoly ?? null,
-    poker: stored.poker ?? null,
+    state: stored.state!,
     seating: stored.seating ?? null,
   };
   enterLocalMode();
@@ -219,7 +234,7 @@ function requireRunner(): LocalRoomRunner | null {
   return runner;
 }
 
-export const localApi = {
+export const localApi: SocketApi = {
   async createRoom() {
     // Lokale Partien entstehen über den Setup-Bildschirm, nicht hierüber.
     return { ok: false, error: 'Lokale Partien werden über „Am Gerät spielen" gestartet.' };
@@ -231,12 +246,7 @@ export const localApi = {
     leaveLocalMode();
   },
 
-  async action(action: GameAction) {
-    const r = requireRunner();
-    return withToast(r ? r.action(action) : { ok: false });
-  },
-
-  async pokerAction(action: PokerAction) {
+  async action(action: unknown) {
     const r = requireRunner();
     return withToast(r ? r.action(action) : { ok: false });
   },
