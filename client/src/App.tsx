@@ -14,6 +14,7 @@ import { Toasts } from './components/Toasts';
 
 export default function App() {
   const room = useStore((s) => s.room);
+  const isLocalGame = useStore((s) => s.session?.mode === 'local');
   const game = useStore((s) => s.game);
   const poker = useStore((s) => s.poker);
   const dialog = useStore((s) => s.dialog);
@@ -21,17 +22,23 @@ export default function App() {
   const route = useHashRoute();
 
   useEffect(() => {
-    document.title = isMyTurn ? '🎲 Du bist dran! · PlayHub' : 'PlayHub – Spieleabend online';
-  }, [isMyTurn]);
+    // Lokal ist immer „jemand" dran (die Identität wandert mit dem Sitz) –
+    // ein „Du bist dran" im Tab-Titel wäre dort dauerhaft und nichtssagend.
+    if (isLocalGame) document.title = '📱 PlayHub – lokale Partie';
+    else document.title = isMyTurn ? '🎲 Du bist dran! · PlayHub' : 'PlayHub – Spieleabend online';
+  }, [isMyTurn, isLocalGame]);
 
   // URL mit dem Raum synchron halten (teilbare Links)
   useEffect(() => {
+    // Lokale Räume bekommen KEINEN Link: der Code existiert auf keinem Server,
+    // ein geteilter Link liefe bei allen anderen ins Leere.
+    if (isLocalGame) return;
     if (room) {
       if (window.location.hash !== roomHash(room.meta.code)) navigate({ page: 'room', code: room.meta.code });
     } else if (route.page === 'room' && !useStore.getState().session) {
       // Raum verlassen → Link-Ansicht bleibt nur, wenn es eine fremde Einladung ist
     }
-  }, [room, route.page]);
+  }, [room, route.page, isLocalGame]);
 
   const phase = game?.phase ?? poker?.phase ?? null;
 

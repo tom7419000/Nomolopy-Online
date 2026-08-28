@@ -11,8 +11,17 @@ import { api } from '../net';
 import { loadName, saveName, useStore } from '../state/store';
 import { Chat } from '../components/Chat';
 import { Modal } from '../components/Modal';
+import { LocalSetup } from './LocalSetup';
 
-function GameCard({ info, onCreate }: { info: GameInfo; onCreate: () => void }) {
+function GameCard({
+  info,
+  onCreate,
+  onLocal,
+}: {
+  info: GameInfo;
+  onCreate: () => void;
+  onLocal: () => void;
+}) {
   return (
     <article className={`game-choice game-${info.id}`}>
       <div className="game-choice-emoji" aria-hidden>
@@ -25,9 +34,15 @@ function GameCard({ info, onCreate }: { info: GameInfo; onCreate: () => void }) 
         <span>👥 {info.minPlayers}–{info.maxPlayers} Spieler</span>
         <span>⏱ {info.duration}</span>
       </div>
-      <button className="btn primary" onClick={onCreate}>
-        Raum erstellen
-      </button>
+      <div className="game-choice-actions">
+        <button className="btn primary" onClick={onCreate}>
+          Raum erstellen
+        </button>
+        {/* Braucht weder Name noch Verbindung – das ist der ganze Punkt. */}
+        <button className="btn" onClick={onLocal}>
+          📱 Am Gerät spielen
+        </button>
+      </div>
     </article>
   );
 }
@@ -218,6 +233,7 @@ export function Home() {
   const [name, setName] = useState(loadName());
   const [code, setCode] = useState('');
   const [createFor, setCreateFor] = useState<GameId | null>(null);
+  const [localFor, setLocalFor] = useState<GameId | null>(null);
   const [busy, setBusy] = useState(false);
 
   const cleanedName = name.trim();
@@ -316,6 +332,7 @@ export function Home() {
             onCreate={() => {
               if (requireName()) setCreateFor(info.id);
             }}
+            onLocal={() => setLocalFor(info.id)}
           />
         ))}
       </div>
@@ -375,6 +392,7 @@ export function Home() {
       </footer>
 
       {createFor && <CreateRoomDialog gameId={createFor} name={cleanedName} onClose={() => setCreateFor(null)} />}
+      {localFor && <LocalSetup gameId={localFor} onClose={() => setLocalFor(null)} />}
     </div>
   );
 }

@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react';
 import { api } from '../../net';
 import { useMe, useStore } from '../../state/store';
 import { Board } from './Board';
+import { TurnBanner } from '../../components/TurnBanner';
 import { GameOverModal } from './Dialogs';
 import { ActionsPanel, ChatPanel, LogPanel, PlayersPanel } from './Panels';
 
 export function GameTable() {
   const game = useStore((s) => s.game)!;
   const connected = useStore((s) => s.connected);
+  const isLocalGame = useStore((s) => s.session?.mode === 'local');
   const openDialog = useStore((s) => s.openDialog);
   const addToast = useStore((s) => s.addToast);
   const me = useMe();
@@ -41,20 +43,28 @@ export function GameTable() {
           <strong>Nomolopy</strong>
           <span className="hint">{game.edition.name}</span>
         </div>
-        <button className="room-code small" onClick={copyCode} title="Code kopieren">
-          {game.id} ⧉
-        </button>
-        <div className={`conn-pill ${connected ? 'ok' : 'bad'}`}>
-          <span className="dot" />
-          {connected ? 'online' : 'offline'}
-        </div>
+        {isLocalGame ? (
+          <div className="conn-pill local">
+            <span className="dot" /> am Gerät
+          </div>
+        ) : (
+          <>
+            <button className="room-code small" onClick={copyCode} title="Code kopieren">
+              {game.id} ⧉
+            </button>
+            <div className={`conn-pill ${connected ? 'ok' : 'bad'}`}>
+              <span className="dot" />
+              {connected ? 'online' : 'offline'}
+            </div>
+          </>
+        )}
         <div className="game-menu">
           {game.phase === 'ended' && resultDismissed && (
             <button className="btn small" onClick={() => setResultDismissed(false)}>
               🏆 Ergebnis
             </button>
           )}
-          {me?.isHost && game.phase !== 'lobby' && (
+          {!isLocalGame && me?.isHost && game.phase !== 'lobby' && (
             <button
               className="btn ghost small"
               title="Spielstand speichern"
@@ -66,24 +76,28 @@ export function GameTable() {
               💾
             </button>
           )}
-          <button className="btn ghost small" title="Spielstände" onClick={() => openDialog({ type: 'saves' })}>
-            📂
-          </button>
-          <button className="btn ghost small" title="Admin-Panel" onClick={() => openDialog({ type: 'admin' })}>
-            ⚙️
-          </button>
+          {!isLocalGame && (
+            <>
+              <button className="btn ghost small" title="Spielstände" onClick={() => openDialog({ type: 'saves' })}>
+                📂
+              </button>
+              <button className="btn ghost small" title="Admin-Panel" onClick={() => openDialog({ type: 'admin' })}>
+                ⚙️
+              </button>
+            </>
+          )}
           <button className="btn ghost small" title="Debug / Spielzustand" onClick={() => openDialog({ type: 'debug' })}>
             🐞
           </button>
           <button
             className="btn ghost small"
-            title="Raum verlassen"
+            title={isLocalGame ? 'Partie beenden' : 'Raum verlassen'}
             onClick={() => {
-              if (
-                game.phase !== 'playing' ||
-                me?.bankrupt ||
-                window.confirm('Raum verlassen? Du kannst mit deinem Namen wieder beitreten.')
-              ) {
+              // Lokal gibt es kein Zurückkommen: der Spielstand liegt nur hier.
+              const question = isLocalGame
+                ? 'Partie beenden? Der lokale Spielstand geht dabei verloren.'
+                : 'Raum verlassen? Du kannst mit deinem Namen wieder beitreten.';
+              if (game.phase !== 'playing' || (!isLocalGame && me?.bankrupt) || window.confirm(question)) {
                 api.leaveRoom();
               }
             }}
@@ -99,6 +113,7 @@ export function GameTable() {
         </aside>
 
         <main className="board-area">
+          <TurnBanner />
           <Board game={game} />
         </main>
 

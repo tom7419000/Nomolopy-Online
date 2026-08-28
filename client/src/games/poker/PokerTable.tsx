@@ -4,15 +4,17 @@
  * Alle Aktionen werden serverseitig validiert – die UI blendet nur ein/aus.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { HandResult, PokerPlayer, PokerView } from '@shared/poker/types';
 import { bestHand, handName } from '@shared/poker/hands';
-import { pokerCallAmount, pokerMinRaiseTo, potTotal } from '@shared/poker/engine';
+import { HIDDEN_CARD, pokerCallAmount, pokerMinRaiseTo, potTotal } from '@shared/poker/engine';
 import { api } from '../../net';
 import { useStore } from '../../state/store';
 import { Chat } from '../../components/Chat';
 import { Modal } from '../../components/Modal';
 import { PlayingCard } from './PlayingCard';
+import { HoleCards, usePeek } from './HoleCards';
+import { TurnBanner } from '../../components/TurnBanner';
 
 const QUICK_MESSAGES = ['👏 Gut gespielt', '😏 Netter Bluff', '🍀 Glück gehabt', '😂'];
 
@@ -54,6 +56,7 @@ function Seat({
   seatCount,
   isMe,
   result,
+  hideHole,
 }: {
   view: PokerView;
   player: PokerPlayer;
@@ -61,6 +64,8 @@ function Seat({
   seatCount: number;
   isMe: boolean;
   result: HandResult | null;
+  /** Lokal: der aktive Sitz zeigt seine Karten erst beim Halten des Knopfes. */
+  hideHole?: boolean;
 }) {
   const isDealer = view.players[view.dealerIndex]?.id === player.id;
   const isToAct = view.toActIndex !== null && view.players[view.toActIndex]?.id === player.id;
@@ -83,7 +88,12 @@ function Seat({
     >
       <div className="seat-cards">
         {(reveal?.hole ?? player.hole ?? []).map((c, i) => (
-          <PlayingCard key={i} card={c} size="sm" highlight={bestSet.has(c)} />
+          <PlayingCard
+            key={i}
+            card={hideHole && !reveal ? HIDDEN_CARD : c}
+            size="sm"
+            highlight={!hideHole && bestSet.has(c)}
+          />
         ))}
       </div>
       <div className="seat-box" style={{ borderColor: player.color }}>
@@ -127,11 +137,25 @@ function ActionBar({ view, me }: { view: PokerView; me: PokerPlayer }) {
   const maxTo = me.bet + me.chips;
   const [raiseTo, setRaiseTo] = useState(minTo);
   const pot = potTotal(view);
+  // Hat der Spieler den Betrag selbst angefasst, darf ein hereinkommender
+  // Zustand ihn nicht überschreiben. Lokal trifft jeder eigene Klick sofort
+  // wieder ein – ohne diese Merkung risse es einen laufenden Zieh-Vorgang weg.
+  const touched = useRef(false);
 
   useEffect(() => {
+    touched.current = false;
+  }, [view.street, me.id]);
+
+  useEffect(() => {
+    if (touched.current) return;
     setRaiseTo(Math.min(Math.max(minTo, view.bigBlind * 2), maxTo));
     // Bei neuem Zug/Street sinnvoll vorbelegen
   }, [minTo, maxTo, view.street, view.currentBet, view.bigBlind]);
+
+  const changeRaise = (v: number) => {
+    touched.current = true;
+    setRaiseTo(v);
+  };
 
   if (me.out) return <div className="poker-actions hint">Du bist ausgeschieden – schau einfach weiter zu.</div>;
 
@@ -208,7 +232,7 @@ function ActionBar({ view, me }: { view: PokerView; me: PokerPlayer }) {
             max={maxTo}
             step={view.bigBlind}
             value={clampedRaise}
-            onChange={(e) => setRaiseTo(Number(e.target.value))}
+            onChange={(e) => changeRaise(Number(e.target.value))}
             aria-label="Erhöhen auf"
           />
           <input
@@ -217,19 +241,19 @@ function ActionBar({ view, me }: { view: PokerView; me: PokerPlayer }) {
             min={minTo}
             max={maxTo}
             value={clampedRaise}
-            onChange={(e) => setRaiseTo(Number(e.target.value))}
+            onChange={(e) => changeRaise(Number(e.target.value))}
           />
           <div className="raise-quick">
-            <button className="btn ghost small" onClick={() => setRaiseTo(minTo)}>
+            <button className="btn ghost small" onClick={() => changeRaise(minTo)}>
               Min
             </button>
             <button
               className="btn ghost small"
-              onClick={() => setRaiseTo(Math.min(maxTo, view.currentBet + Math.floor(pot / 2)))}
+              onClick={() => changeRaise(Math.min(maxTo, view.currentBet + Math.floor(pot / 2)))}
             >
               ½ Pot
             </button>
-            <button className="btn ghost small" onClick={() => setRaiseTo(Math.min(maxTo, view.currentBet + pot))}>
+            <button className="btn ghost small" onClick={() => changeRaise(Math.min(maxTo, view.currentBet + pot))}>
               Pot
             </button>
           </div>
@@ -315,6 +339,7 @@ export function PokerTable() {
   const view = useStore((s) => s.poker)!;
   const session = useStore((s) => s.session);
   const connected = useStore((s) => s.connected);
+  const isLocalGame = useStore((s) => s.session?.mode === 'local');
   const addToast = useStore((s) => s.addToast);
   const [tab, setTab] = useState<'log' | 'chat'>('chat');
   const [resultDismissed, setResultDismissed] = useState(false);
@@ -325,6 +350,10 @@ export function PokerTable() {
 
   const me = view.players.find((p) => p.id === session?.playerId);
   const isSpectator = !me;
+  const peek = usePeek(me?.id, view.street);
+  // Der aktive Sitz sitzt unten am Filz und zeigt dieselben echten Karten –
+  // ohne diese Sperre wäre der Halten-Knopf wirkungslos.
+  const hideOwnHole = isLocalGame && !peek.peeking;
 
   // Sitz-Anordnung: ich unten, Rest im Uhrzeigersinn
   const seats = useMemo(() => {
@@ -336,10 +365,11 @@ export function PokerTable() {
 
   const pot = potTotal(view);
   const myHint = useMemo(() => {
+    if (hideOwnHole) return null;
     if (!me?.hole || me.hole.some((c) => c < 0) || me.folded) return null;
     if (view.community.length < 3) return null;
     return handName(bestHand([...me.hole, ...view.community]));
-  }, [me?.hole, me?.folded, view.community]);
+  }, [me?.hole, me?.folded, view.community, hideOwnHole]);
 
   function copyCode() {
     navigator.clipboard
@@ -357,13 +387,21 @@ export function PokerTable() {
             Hand {view.handNumber} · Blinds {fmt(view.smallBlind)}/{fmt(view.bigBlind)} · {streetLabel(view)}
           </span>
         </div>
-        <button className="room-code small" onClick={copyCode} title="Code kopieren">
-          {room.meta.code} ⧉
-        </button>
-        <div className={`conn-pill ${connected ? 'ok' : 'bad'}`}>
-          <span className="dot" />
-          {connected ? 'online' : 'offline'}
-        </div>
+        {isLocalGame ? (
+          <div className="conn-pill local">
+            <span className="dot" /> am Gerät
+          </div>
+        ) : (
+          <>
+            <button className="room-code small" onClick={copyCode} title="Code kopieren">
+              {room.meta.code} ⧉
+            </button>
+            <div className={`conn-pill ${connected ? 'ok' : 'bad'}`}>
+              <span className="dot" />
+              {connected ? 'online' : 'offline'}
+            </div>
+          </>
+        )}
         <div className="game-menu">
           {view.phase === 'ended' && resultDismissed && (
             <button className="btn small" onClick={() => setResultDismissed(false)}>
@@ -385,14 +423,13 @@ export function PokerTable() {
           )}
           <button
             className="btn ghost small"
-            title="Raum verlassen"
+            title={isLocalGame ? 'Partie beenden' : 'Raum verlassen'}
             onClick={() => {
-              if (
-                isSpectator ||
-                view.phase !== 'playing' ||
-                me?.out ||
-                window.confirm('Raum verlassen? Du kannst mit deinem Namen wieder beitreten – abwesende Spieler folden automatisch.')
-              ) {
+              // Lokal gibt es kein Zurückkommen: der Spielstand liegt nur hier.
+              const question = isLocalGame
+                ? 'Partie beenden? Der lokale Spielstand geht dabei verloren.'
+                : 'Raum verlassen? Du kannst mit deinem Namen wieder beitreten – abwesende Spieler folden automatisch.';
+              if (isSpectator || view.phase !== 'playing' || (!isLocalGame && me?.out) || window.confirm(question)) {
                 api.leaveRoom();
               }
             }}
@@ -405,6 +442,7 @@ export function PokerTable() {
       <div className="game-layout poker-layout">
         <main className="poker-area">
           {isSpectator && <div className="spectator-banner">👁 Du schaust zu</div>}
+          <TurnBanner />
           <div className="poker-felt">
             {seats.map((p, i) => (
               <Seat
@@ -415,6 +453,7 @@ export function PokerTable() {
                 seatCount={seats.length}
                 isMe={p.id === me?.id}
                 result={view.street === 'showdown' ? view.handResult : null}
+                hideHole={p.id === me?.id && hideOwnHole}
               />
             ))}
             <div className="felt-center">
@@ -435,12 +474,7 @@ export function PokerTable() {
 
           {me && (
             <div className="my-bar">
-              <div className="my-cards">
-                {(me.hole ?? []).map((c, i) => (
-                  <PlayingCard key={i} card={c} size="lg" dimmed={me.folded} />
-                ))}
-                {myHint && <span className="hand-hint">{myHint}</span>}
-              </div>
+              <HoleCards me={me} hint={myHint} local={isLocalGame} peek={peek} />
               <ActionBar view={view} me={me} />
             </div>
           )}
@@ -475,7 +509,7 @@ export function PokerTable() {
         </aside>
       </div>
 
-      {!connected && (
+      {!connected && !isLocalGame && (
         <div className="reconnect-overlay">
           <div className="reconnect-box">
             <span className="spinner" /> Verbindung unterbrochen – stelle wieder her …

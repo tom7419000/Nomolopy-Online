@@ -66,6 +66,9 @@ export interface LocalRoomHooks {
 
 const err = (error: string): ActionResult => ({ ok: false, error });
 
+/** Pause nach dem Showdown – länger als online, siehe `publish()`. */
+const LOCAL_SHOWDOWN_PAUSE_MS = 25_000;
+
 // ---------------------------------------------------------------------------
 // Aufbau
 // ---------------------------------------------------------------------------
@@ -126,6 +129,11 @@ export function activeSeatId(room: LocalRoom): string | null {
   const g = room.monopoly;
   if (g) {
     if (g.phase !== 'playing') return null;
+    // Ein offenes Handelsangebot kann NUR der Empfänger beantworten
+    // (`doRespondTrade` prüft das). Bliebe die Identität beim Anbieter,
+    // ließe sich der Handel am gemeinsamen Gerät nie abschließen – und das
+    // Band oben nennt gleich den Richtigen, an den weiterzureichen ist.
+    if (g.trade) return g.trade.toId;
     return g.players[g.currentPlayer]?.id ?? null;
   }
   const p = room.poker;
@@ -207,7 +215,15 @@ export class LocalRoomRunner {
     if (this.stopped) return;
     // Die Zug-Uhr gilt am gemeinsamen Gerät nicht: ein Auto-Fold, weil das
     // Tablet gerade weitergereicht wird, wäre die falsche Strafe.
-    if (this.room.poker) this.room.poker.actionDeadline = null;
+    if (this.room.poker) {
+      this.room.poker.actionDeadline = null;
+      // Neun Sekunden reichen online, wo jeder auf seinen Bildschirm schaut.
+      // Am Tisch wollen alle die aufgedeckten Karten in Ruhe sehen.
+      if (this.room.poker.nextHandAt !== null) {
+        const min = this.now() + LOCAL_SHOWDOWN_PAUSE_MS;
+        if (this.room.poker.nextHandAt < min) this.room.poker.nextHandAt = min;
+      }
+    }
     const { env, activeSeatId: seat } = buildEnvelope(this.room);
     this.hooks.publish(env, seat);
     this.scheduleTick();

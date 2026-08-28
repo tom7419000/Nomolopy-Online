@@ -19,6 +19,9 @@ import { money, phaseLabel, timeHHMM } from '../../ui/format';
 
 function PlayerCard({ game, player }: { game: GameState; player: Player }) {
   const me = useMe();
+  // Lokal ist jeder Sitz Host (damit host-gebundene Aktionen von jedem Sitz
+  // aus funktionieren) – ein HOST-Abzeichen auf allen Karten wäre sinnlos.
+  const isLocalGame = useStore((s) => s.session?.mode === 'local');
   const openDialog = useStore((s) => s.openDialog);
   const isCurrent = game.phase === 'playing' && game.players[game.currentPlayer]?.id === player.id;
   const owned = ownedTiles(game, player.id);
@@ -34,7 +37,7 @@ function PlayerCard({ game, player }: { game: GameState; player: Player }) {
         </span>
         <span className="player-name">
           {player.name}
-          {player.isHost && <span className="badge">HOST</span>}
+          {player.isHost && !isLocalGame && <span className="badge">HOST</span>}
           {player.id === me?.id && <span className="badge you">DU</span>}
         </span>
         <span className="player-flags">

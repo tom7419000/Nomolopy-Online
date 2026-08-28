@@ -9,6 +9,12 @@ export interface Session {
   token: string;
   name: string;
   spectator?: boolean;
+  /**
+   * Im lokalen Pass-&-Play-Modus wandert `playerId` mit dem aktiven Sitz.
+   * Der Diskriminator hält solche Sitzungen aus dem Server-Reconnect heraus
+   * und schaltet die Hinweistexte auf den Spielernamen um.
+   */
+  mode?: 'online' | 'local';
 }
 
 export interface Toast {
@@ -86,7 +92,9 @@ export const useStore = create<AppStore>((set, get) => ({
         nowCurrent?.id === session.playerId &&
         (prevCurrent?.id !== session.playerId || prevGame?.phase !== 'playing');
       if (becameMyTurn && game.turnPhase === 'awaiting-roll') {
-        addToast('turn', '🎲 Du bist dran!');
+        // Am gemeinsamen Gerät ist der Name die Information, die zählt –
+        // „du" wäre für alle am Tisch mehrdeutig.
+        addToast('turn', session.mode === 'local' ? `👉 ${nowCurrent.name} ist dran` : '🎲 Du bist dran!');
       }
       const newTradeForMe =
         game.trade && game.trade.toId === session.playerId && prevGame?.trade?.id !== game.trade.id;
@@ -102,7 +110,7 @@ export const useStore = create<AppStore>((set, get) => ({
       const prevActor =
         prevPoker && prevPoker.toActIndex !== null ? prevPoker.players[prevPoker.toActIndex] : null;
       if (actor?.id === session.playerId && prevActor?.id !== session.playerId) {
-        addToast('turn', '🃏 Du bist dran!');
+        addToast('turn', session.mode === 'local' ? `👉 ${actor.name} ist dran` : '🃏 Du bist dran!');
       }
     }
 

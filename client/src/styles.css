@@ -101,7 +101,9 @@ input[type='number'] { appearance: textfield; }
   transition: transform 0.08s, background 0.15s, border-color 0.15s;
   user-select: none;
 }
-.btn:hover:not(:disabled) { background: var(--panel-3); border-color: #46587e; }
+@media (hover: hover) and (pointer: fine) {
+  .btn:hover:not(:disabled) { background: var(--panel-3); border-color: #46587e; }
+}
 .btn:active:not(:disabled) { transform: translateY(1px); }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -112,9 +114,13 @@ input[type='number'] { appearance: textfield; }
   color: #08130c;
   font-weight: 700;
 }
-.btn.primary:hover:not(:disabled) { filter: brightness(1.07); background: linear-gradient(180deg, var(--accent), var(--accent-2)); }
+@media (hover: hover) and (pointer: fine) {
+  .btn.primary:hover:not(:disabled) { filter: brightness(1.07); background: linear-gradient(180deg, var(--accent), var(--accent-2)); }
+}
 .btn.danger { background: #3a1a20; border-color: #6e2a31; color: #ff8b90; }
-.btn.danger:hover:not(:disabled) { background: #4a2129; }
+@media (hover: hover) and (pointer: fine) {
+  .btn.danger:hover:not(:disabled) { background: #4a2129; }
+}
 .btn.ghost { background: transparent; }
 .btn.small { padding: 5px 9px; font-size: 0.82rem; border-radius: 7px; }
 .btn.big { width: 100%; padding: 13px 16px; font-size: 1.05rem; }
@@ -130,7 +136,9 @@ input[type='number'] { appearance: textfield; }
   align-items: center;
   gap: 6px;
 }
-.linkish:hover { color: var(--accent); }
+@media (hover: hover) and (pointer: fine) {
+  .linkish:hover { color: var(--accent); }
+}
 
 .badge {
   font-size: 0.6rem;
@@ -242,7 +250,9 @@ input[type='number'] { appearance: textfield; }
 }
 .room-code strong { letter-spacing: 0.3em; margin-left: 4px; color: var(--accent); }
 .room-code.small { padding: 5px 10px; font-size: 0.9rem; }
-.room-code:hover { border-color: var(--accent); }
+@media (hover: hover) and (pointer: fine) {
+  .room-code:hover { border-color: var(--accent); }
+}
 
 .lobby-grid {
   display: grid;
@@ -356,7 +366,9 @@ input[type='number'] { appearance: textfield; }
   text-align: center;
   transition: filter 0.12s;
 }
-.tile:hover { filter: brightness(1.06); z-index: 2; }
+@media (hover: hover) and (pointer: fine) {
+  .tile:hover { filter: brightness(1.06); z-index: 2; }
+}
 .tile:focus-visible { outline: 2px solid #0a84ff; outline-offset: -2px; z-index: 2; }
 
 .side-bottom { grid-template-rows: 26% 1fr auto; grid-template-areas: 'bar' 'name' 'price'; }
@@ -384,7 +396,7 @@ input[type='number'] { appearance: textfield; }
 }
 
 .tile-houses {
-  font-size: 1.15cqw;
+  font-size: max(8px, 1.15cqw);
   line-height: 1;
   letter-spacing: -0.28em;
   padding-right: 0.28em;
@@ -396,7 +408,7 @@ input[type='number'] { appearance: textfield; }
 .tile-name {
   grid-area: name;
   align-self: center;
-  font-size: 1.02cqw;
+  font-size: max(9px, 1.02cqw);
   font-weight: 650;
   line-height: 1.18;
   padding: 2% 3%;
@@ -409,18 +421,18 @@ input[type='number'] { appearance: textfield; }
   text-transform: uppercase;
 }
 .side-left .tile-name,
-.side-right .tile-name { -webkit-line-clamp: 2; font-size: 1.08cqw; }
+.side-right .tile-name { -webkit-line-clamp: 2; font-size: max(9px, 1.08cqw); }
 
-.tile-price { grid-area: price; font-size: 0.98cqw; padding: 3% 2%; color: #33413c; font-weight: 550; }
+.tile-price { grid-area: price; font-size: max(8px, 0.98cqw); padding: 3% 2%; color: #33413c; font-weight: 550; }
 .side-left .tile-price, .side-right .tile-price { padding: 1% 3% 4%; }
 
-.tile-icon { grid-area: bar; align-self: center; justify-self: center; font-size: 1.9cqw; line-height: 1; }
+.tile-icon { grid-area: bar; align-self: center; justify-self: center; font-size: max(13px, 1.9cqw); line-height: 1; }
 .tile-icon.big { grid-area: name; font-size: 3.1cqw; align-self: end; }
-.side-corner .tile-name { align-self: start; font-size: 1.25cqw; }
+.side-corner .tile-name { align-self: start; font-size: max(10px, 1.25cqw); }
 .side-corner { grid-template-rows: 55% 45%; grid-template-areas: 'name' 'x'; padding: 6% 4%; }
 .side-corner .tile-icon.big { grid-area: x; align-self: center; }
 .corner-0 { background: color-mix(in srgb, var(--board-color) 25%, #fff3ea); }
-.corner-0 .tile-name { color: #c02a1e; font-size: 1.6cqw; font-weight: 900; }
+.corner-0 .tile-name { color: #c02a1e; font-size: max(11px, 1.6cqw); font-weight: 900; }
 .corner-30 .tile-name { color: #1c4587; }
 
 .type-chance { background: color-mix(in srgb, #ffd9a0 34%, #fdfcf7); }
@@ -900,7 +912,9 @@ input[type='number'] { appearance: textfield; }
   appearance: none;
 }
 .tile-group-head.neutral { background: var(--panel-3); color: var(--text); text-shadow: none; }
-.tile-group-head:hover { filter: brightness(1.06); }
+@media (hover: hover) and (pointer: fine) {
+  .tile-group-head:hover { filter: brightness(1.06); }
+}
 .tile-group-head:focus-visible { outline: 2px solid #0a84ff; outline-offset: -2px; }
 .tile-group-chevron { display: inline-block; width: 1em; text-align: center; flex: none; }
 .tile-rows { display: flex; flex-direction: column; }
@@ -1022,7 +1036,9 @@ input[type='number'] { appearance: textfield; }
   box-shadow: var(--shadow);
   transition: transform 0.12s, border-color 0.15s;
 }
-.game-choice:hover { transform: translateY(-2px); border-color: #46587e; }
+@media (hover: hover) and (pointer: fine) {
+  .game-choice:hover { transform: translateY(-2px); border-color: #46587e; }
+}
 .game-choice-emoji { font-size: 2.4rem; line-height: 1; }
 .game-choice h3 { margin: 0; font-size: 1.2rem; }
 .game-choice .tagline { color: var(--text-dim); margin: 0; font-size: 0.9rem; }
@@ -1286,7 +1302,9 @@ input[type='number'] { appearance: textfield; }
 .poker-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; flex: 1; }
 .poker-actions.hint { font-size: 0.9rem; }
 .btn.allin { background: #4a2a08; border-color: #8a5a1a; color: #ffc46b; font-weight: 700; }
-.btn.allin:hover:not(:disabled) { background: #5c3a10; }
+@media (hover: hover) and (pointer: fine) {
+  .btn.allin:hover:not(:disabled) { background: #5c3a10; }
+}
 .raise-group {
   display: flex;
   gap: 8px;
@@ -1387,3 +1405,109 @@ input[type='number'] { appearance: textfield; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: var(--panel-3); border-radius: 6px; border: 2px solid var(--bg-2); }
 ::-webkit-scrollbar-track { background: transparent; }
+
+/* --------------------------------------------------------------------------
+   Lokaler Modus (Pass & Play an einem Gerät)
+   -------------------------------------------------------------------------- */
+
+.conn-pill.local { border-color: #4a6b52; color: #9fd8ae; }
+.conn-pill.local .dot { background: #52c273; }
+
+/* „X ist dran" – am geteilten Gerät die wichtigste Information überhaupt.
+   Bewusst ein dauerhaftes Band statt eines Toasts: Wer nach dem Weiterreichen
+   aufs Tablet schaut, hat den Toast längst verpasst. */
+.turn-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 10px;
+  padding: 10px 14px;
+  border: 2px solid var(--accent);
+  border-radius: 12px;
+  background: var(--panel-2);
+  font-size: 1.05rem;
+}
+.turn-banner strong { font-size: 1.25rem; }
+.turn-banner-token {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+.turn-banner-pass { margin-left: auto; color: var(--text-dim); font-size: 0.85rem; }
+
+/* Setup-Bildschirm */
+.setup-title { margin: 14px 0 6px; font-size: 0.95rem; color: var(--text-dim); }
+.seat-setup { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.seat-setup li { display: flex; align-items: center; gap: 10px; }
+.seat-setup .input { flex: 1; }
+.seat-dot { width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0; }
+
+/* Halten zum Ansehen: groß genug für den Daumen, und ohne die Gesten, die
+   iOS sonst darüberlegt (Textauswahl, Kontextmenü, Doppeltipp-Zoom). */
+.btn.peek {
+  min-height: 56px;
+  flex: 1 1 100%;
+  font-size: 1rem;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.btn.peek.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* --------------------------------------------------------------------------
+   Touch: Tablet quer, vier Leute drumherum
+   -------------------------------------------------------------------------- */
+
+/* Kein blaues Aufblitzen, keine 300ms-Verzögerung, kein Doppeltipp-Zoom –
+   zwei schnelle Tipps auf „Würfeln" haben bisher das Brett gezoomt. */
+button,
+.tile,
+.seat,
+.pcard,
+.tab,
+.room-code {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+@media (pointer: coarse) {
+  /* Sechs 26px-Icons nebeneinander, darunter „Raum verlassen" direkt neben
+     „Debug" – auf einem Tablet zu eng beieinander. */
+  .btn.small {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 8px 12px;
+    font-size: 0.9rem;
+  }
+  .game-menu { gap: 10px; }
+
+  /* Der Slider ist mit 150px und Standard-Griff kaum zu treffen. */
+  .raise-group input[type='range'] {
+    width: min(320px, 40vw);
+    height: 44px;
+  }
+  .raise-group input[type='range']::-webkit-slider-thumb {
+    width: 28px;
+    height: 28px;
+  }
+  .raise-group input[type='range']::-moz-range-thumb {
+    width: 28px;
+    height: 28px;
+  }
+}
+
+/* Als installierte PWA im Querformat sonst unter der Notch. */
+@media (pointer: coarse) {
+  .game-header {
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
+  }
+  .my-bar {
+    padding-bottom: max(0px, env(safe-area-inset-bottom));
+  }
+}
