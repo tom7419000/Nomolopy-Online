@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api } from '../../net/socket';
+import { api } from '../../net';
 import { useMe, useStore } from '../../state/store';
 import { Board } from './Board';
 import { GameOverModal } from './Dialogs';

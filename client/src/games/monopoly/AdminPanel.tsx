@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { BoardEdition, GroupId } from '@shared/types';
 import { GROUP_LABELS, GROUP_ORDER } from '@shared/boards';
-import { api } from '../../net/socket';
+import { api } from '../../net';
 import { useStore } from '../../state/store';
 import { Modal } from './Dialogs';
 

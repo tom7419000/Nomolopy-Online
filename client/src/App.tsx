@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import './net/socket';
+import './net';
 import { useIsMyTurn, useStore } from './state/store';
 import { navigate, roomHash, useHashRoute } from './hooks/useHashRoute';
 import { Home } from './pages/Home';

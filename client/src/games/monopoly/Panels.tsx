@@ -9,7 +9,7 @@ import {
   ownedTiles,
 } from '@shared/engine';
 import { GROUP_ORDER } from '@shared/boards';
-import { api } from '../../net/socket';
+import { api } from '../../net';
 import { useMe, useStore } from '../../state/store';
 import { money, phaseLabel, timeHHMM } from '../../ui/format';
 

@@ -10,6 +10,7 @@ import type { GameAction } from '@shared/types';
 import type { GameId, RoomEnvelope } from '@shared/games';
 import type { PokerAction, PokerRules } from '@shared/poker/types';
 import { useStore, loadSession, saveSession, clearSession } from '../state/store';
+import { isLocal } from './mode';
 
 // Socket.io-Pfad aus dem Seitenpfad ableiten, damit die App auch unter
 // einem Unterpfad funktioniert (z. B. https://example.de/playhub/ →
@@ -44,6 +45,10 @@ export function call<T extends Resp = Resp>(event: string, payload?: unknown): P
 }
 
 socket.on('connect', async () => {
+  // Läuft gerade eine lokale Partie, hat der Server damit nichts zu tun. Ohne
+  // diesen Riegel würde die synthetische lokale Sitzung als 'room:rejoin'
+  // verschickt, scheitern – und mit ihr die laufende Partie gelöscht.
+  if (isLocal()) return;
   const store = useStore.getState();
   store.setConnected(true);
   const session = useStore.getState().session ?? loadSession();
@@ -62,10 +67,12 @@ socket.on('connect', async () => {
 });
 
 socket.on('disconnect', () => {
+  if (isLocal()) return;
   useStore.getState().setConnected(false);
 });
 
 socket.on('state', (room: RoomEnvelope) => {
+  if (isLocal()) return;
   useStore.getState().setRoom(room);
 });
 
@@ -86,6 +93,7 @@ socket.on('lobby:chat:new', (payload) => {
 });
 
 socket.on('identity', (payload: { code: string; playerId: string; token: string }) => {
+  if (isLocal()) return;
   const prev = useStore.getState().session;
   const session = { code: payload.code, playerId: payload.playerId, token: payload.token, name: prev?.name ?? '' };
   saveSession(session);
@@ -93,6 +101,7 @@ socket.on('identity', (payload: { code: string; playerId: string; token: string 
 });
 
 socket.on('kicked', (payload: { reason?: string }) => {
+  if (isLocal()) return;
   clearSession();
   useStore.getState().setSession(null);
   useStore.getState().setRoom(null);
@@ -134,7 +143,7 @@ export interface CreateRoomOptions {
   pokerRules?: Partial<PokerRules>;
 }
 
-export const api = {
+export const socketApi = {
   async createRoom(options: CreateRoomOptions) {
     const r = await withErrorToast(call('room:create', options));
     storeJoinReply(r, options.name);
@@ -223,3 +232,16 @@ export const api = {
     return withErrorToast(call('admin:deleteEdition', { id }));
   },
 };
+
+/**
+ * Verbindung im lokalen Modus schlafen legen. Ohne das versucht Socket.io
+ * ohne Netz endlos zu verbinden – unnötiger Akkuverbrauch am Tablet.
+ */
+export function suspendSocket(): void {
+  if (socket.connected || socket.active) socket.disconnect();
+}
+
+/** Verbindung wieder aufnehmen (Rückkehr aus dem lokalen Modus). */
+export function resumeSocket(): void {
+  if (!socket.connected) socket.connect();
+}

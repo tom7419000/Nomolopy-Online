@@ -5,7 +5,7 @@
  */
 
 import { useState } from 'react';
-import { api } from '../net/socket';
+import { api } from '../net';
 import { loadName, saveName, useStore } from '../state/store';
 import { navigate } from '../hooks/useHashRoute';
 

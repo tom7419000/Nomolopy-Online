@@ -9,7 +9,7 @@ import { RULE_FIELDS } from '@shared/rules';
 import { getGameInfo } from '@shared/games';
 import { POKER_LIMITS } from '@shared/poker/rules';
 import type { PokerRules } from '@shared/poker/types';
-import { api } from '../net/socket';
+import { api } from '../net';
 import { useStore } from '../state/store';
 import { Chat } from '../components/Chat';
 import { roomLink } from '../hooks/useHashRoute';

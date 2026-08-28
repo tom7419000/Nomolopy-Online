@@ -8,7 +8,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { HandResult, PokerPlayer, PokerView } from '@shared/poker/types';
 import { bestHand, handName } from '@shared/poker/hands';
 import { pokerCallAmount, pokerMinRaiseTo, potTotal } from '@shared/poker/engine';
-import { api } from '../../net/socket';
+import { api } from '../../net';
 import { useStore } from '../../state/store';
 import { Chat } from '../../components/Chat';
 import { Modal } from '../../components/Modal';

@@ -7,7 +7,7 @@ import { useMemo, useState } from 'react';
 import { GAME_CATALOG, getGameInfo, type GameId, type GameInfo } from '@shared/games';
 import { DEFAULT_POKER_RULES, POKER_LIMITS } from '@shared/poker/rules';
 import type { PokerRules } from '@shared/poker/types';
-import { api } from '../net/socket';
+import { api } from '../net';
 import { loadName, saveName, useStore } from '../state/store';
 import { Chat } from '../components/Chat';
 import { Modal } from '../components/Modal';

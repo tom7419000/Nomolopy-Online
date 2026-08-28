@@ -9,7 +9,7 @@ import {
   unmortgageCost,
 } from '@shared/engine';
 import { cardText } from '@shared/cards';
-import { api } from '../../net/socket';
+import { api } from '../../net';
 import { useIsMyTurn, useMe, useStore } from '../../state/store';
 import { money, tileIcon } from '../../ui/format';
 import { Modal } from '../../components/Modal';
