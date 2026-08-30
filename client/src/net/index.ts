@@ -41,6 +41,8 @@ export const api: SocketApi = {
   deleteSave: route('deleteSave'),
   saveEdition: route('saveEdition'),
   deleteEdition: route('deleteEdition'),
+  savePack: route('savePack'),
+  deletePack: route('deletePack'),
 };
 
 // Eine unterbrochene lokale Partie hat Vorrang vor einer alten Online-Sitzung:

@@ -1581,3 +1581,45 @@ button,
 @media (prefers-reduced-motion: reduce) {
   .pass-banner { transition: none; }
 }
+
+/* --------------------------------------------------------------------------
+   Fragenpakete (Trivia-Editor)
+   -------------------------------------------------------------------------- */
+
+.pack-grid {
+  display: grid;
+  grid-template-columns: 1fr repeat(5, 44px);
+  gap: 4px;
+  align-items: center;
+  margin: 6px 0 10px;
+}
+.pack-grid-head,
+.pack-grid-cell {
+  text-align: center;
+  font-size: 0.85rem;
+  padding: 4px 0;
+  border-radius: 6px;
+}
+.pack-grid-head { color: var(--text-dim); }
+.pack-grid-cat { font-size: 0.85rem; }
+.pack-grid-cell { background: var(--panel-2); }
+/* Zu wenige Fragen: Trivial Pursuit könnte hier keine Ablenker bilden. */
+.pack-grid-cell.thin { background: #4a2129; color: #ffb3bd; }
+
+.pack-ok { color: #6fd08c; font-size: 0.85rem; }
+.pack-thin { color: #ffb3bd; font-size: 0.85rem; }
+
+.pack-questions { list-style: none; display: flex; flex-direction: column; gap: 10px; margin: 8px 0; }
+.pack-questions li {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  background: var(--panel-2);
+  border-radius: 8px;
+}
+.pack-q-head { display: flex; gap: 6px; align-items: center; }
+.pack-q-head .input.small { width: 64px; }
+.pack-q-head .btn { margin-left: auto; }
+
+.pack-json { min-height: 220px; font-family: ui-monospace, monospace; font-size: 0.8rem; }

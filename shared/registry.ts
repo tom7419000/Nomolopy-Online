@@ -15,6 +15,7 @@
 
 import type { ActionResult, BoardEdition } from './types';
 import type { GameId, GameStateMap } from './games';
+import type { TriviaPack } from './trivia/types';
 import { monopolyModule } from './monopoly/module';
 import { pokerModule } from './poker/module';
 
@@ -39,6 +40,8 @@ export interface ChatAuthor {
 export interface GameDeps {
   editions(): BoardEdition[];
   preset(id: string): { id: string; rules: Record<string, unknown> };
+  /** Fragenpakete für die Trivia-Spiele (eingebaut + eigene). */
+  packs(): TriviaPack[];
 }
 
 /** Optionen aus dem „Raum erstellen"-Dialog, pro Spiel unterschiedlich. */

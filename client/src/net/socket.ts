@@ -78,7 +78,7 @@ socket.on('state', (room: RoomEnvelope) => {
 });
 
 socket.on('catalog', (payload) => {
-  useStore.getState().setCatalog(payload.editions ?? [], payload.presets ?? []);
+  useStore.getState().setCatalog(payload.editions ?? [], payload.presets ?? [], payload.packs ?? []);
 });
 
 socket.on('lobby:rooms', (payload) => {
@@ -231,6 +231,14 @@ export const socketApi = {
 
   deleteEdition(id: string) {
     return withErrorToast(call('admin:deleteEdition', { id }));
+  },
+
+  savePack(pack: unknown) {
+    return withErrorToast(call('admin:savePack', { pack }));
+  },
+
+  deletePack(id: string) {
+    return withErrorToast(call('admin:deletePack', { id }));
   },
 };
 

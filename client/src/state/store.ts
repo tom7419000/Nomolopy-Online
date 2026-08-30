@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import type { BoardEdition, GameState, Player, RulePreset } from '@shared/types';
 import type { SeatInfo } from '@shared/registry';
+import type { TriviaPack } from '@shared/trivia/types';
+import { BUILT_IN_PACKS } from '@shared/trivia/packs/standard-de';
 import type { LobbyChatMessage, PublicRoomInfo, RoomEnvelope } from '@shared/games';
 import type { PokerView } from '@shared/poker/types';
 import { moduleFor } from '@shared/registry';
@@ -29,6 +31,7 @@ export interface Toast {
 
 export type Dialog =
   | { type: 'admin' }
+  | { type: 'packs' }
   | { type: 'debug' }
   | { type: 'trade'; partnerId?: string }
   | { type: 'saves' }
@@ -39,6 +42,8 @@ interface AppStore {
   connected: boolean;
   editions: BoardEdition[];
   presets: RulePreset[];
+  /** Fragenpakete – eingebaut, bis der Server-Katalog eintrifft. */
+  packs: TriviaPack[];
   session: Session | null;
   /** Aktueller Raum (Hülle mit meta + genau einem Spielzustand) */
   room: RoomEnvelope | null;
@@ -55,7 +60,7 @@ interface AppStore {
   /** Drehwinkel der Spielansicht – folgt dem Sitz, der gerade handelt */
   rotation: SeatEdge;
   setConnected(v: boolean): void;
-  setCatalog(editions: BoardEdition[], presets: RulePreset[]): void;
+  setCatalog(editions: BoardEdition[], presets: RulePreset[], packs: TriviaPack[]): void;
   setRoom(room: RoomEnvelope | null): void;
   setSession(session: Session | null): void;
   setSeating(seating: LocalSeating | null, rotation: SeatEdge): void;
@@ -74,6 +79,7 @@ export const useStore = create<AppStore>((set, get) => ({
   connected: false,
   editions: [],
   presets: [],
+  packs: BUILT_IN_PACKS,
   session: loadSession(),
   room: null,
   game: null,
@@ -87,7 +93,7 @@ export const useStore = create<AppStore>((set, get) => ({
 
   setConnected: (v) => set({ connected: v }),
 
-  setCatalog: (editions, presets) => set({ editions, presets }),
+  setCatalog: (editions, presets, packs) => set({ editions, presets, packs }),
 
   setRoom: (room) => {
     const { room: prevRoom, session, addToast } = get();

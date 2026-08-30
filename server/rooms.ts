@@ -37,6 +37,7 @@ import * as store from './store';
 const deps = {
   editions: () => store.allEditions(),
   preset: (id: string) => getPreset(id) as unknown as { id: string; rules: Record<string, unknown> },
+  packs: () => store.allPacks(),
 };
 
 /**
@@ -220,7 +221,7 @@ function nameColor(name: string): string {
 // ---------------------------------------------------------------------------
 
 function catalogPayload() {
-  return { editions: store.allEditions(), presets: RULE_PRESETS, games: GAME_CATALOG };
+  return { editions: store.allEditions(), presets: RULE_PRESETS, packs: store.allPacks(), games: GAME_CATALOG };
 }
 
 function uniqueName(existing: string[], name: string): string {
@@ -776,6 +777,23 @@ export function registerHandlers(io: Server): void {
 
     socket.on('admin:deleteEdition', (payload, cb) => {
       const result = store.deleteEdition(String(payload?.id ?? ''));
+      reply(cb, { ...result });
+      if (result.ok) io.emit('catalog', catalogPayload());
+    });
+
+    // -----------------------------------------------------------------
+    // Admin: Fragenpakete
+    // -----------------------------------------------------------------
+
+    socket.on('admin:savePack', (payload, cb) => {
+      const result = store.upsertPack(payload?.pack);
+      if (!result.ok) return reply(cb, { ok: false, error: result.error });
+      reply(cb, { ok: true, pack: result.pack });
+      io.emit('catalog', catalogPayload());
+    });
+
+    socket.on('admin:deletePack', (payload, cb) => {
+      const result = store.deletePack(String(payload?.id ?? ''));
       reply(cb, { ...result });
       if (result.ok) io.emit('catalog', catalogPayload());
     });

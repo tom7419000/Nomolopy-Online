@@ -13,6 +13,8 @@
  */
 
 import { BUILT_IN_EDITIONS } from '@shared/boards';
+import { BUILT_IN_PACKS } from '@shared/trivia/packs/standard-de';
+import type { TriviaPack } from '@shared/trivia/types';
 import { getPreset } from '@shared/rules';
 import { randomId, randomRoomCode } from '@shared/util';
 import { getGameInfo, type AnyGameState, type GameId, type RoomEnvelope, type RoomMeta } from '@shared/games';
@@ -88,6 +90,8 @@ export interface LocalRoomOptions {
   seatMode?: LocalSeating['mode'];
   /** Kante je Sitz, in derselben Reihenfolge wie `players`. */
   seatEdges?: SeatEdge[];
+  /** Eigene Fragenpakete aus dem Browser-Speicher. */
+  packs?: TriviaPack[];
 }
 
 export interface LocalRoomHooks {
@@ -123,6 +127,8 @@ export function createLocalRoom(opts: LocalRoomOptions): LocalRoom {
     // vom Server, und der ist hier bewusst nicht im Spiel.
     editions: () => (opts.editions?.length ? opts.editions : BUILT_IN_EDITIONS),
     preset: (id) => getPreset(id) as unknown as { id: string; rules: Record<string, unknown> },
+    // Lokal: eingebaute Pakete plus die, die im Browser gespeichert wurden.
+    packs: () => (opts.packs?.length ? opts.packs : BUILT_IN_PACKS),
   };
 
   const state = m.create(

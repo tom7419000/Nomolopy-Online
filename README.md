@@ -37,7 +37,7 @@ LAN einfach `http://<deine-IP>:3001` an die Mitspieler geben. Port per `PORT`,
 Datenverzeichnis (Editionen/Spielstände) per `DATA_DIR` konfigurierbar.
 
 ```bash
-npm test                                 # Unit-Tests: Monopoly, Poker, lokaler Raum (76 Tests)
+npm test                                 # Unit-Tests: Monopoly, Poker, lokaler Raum, Trivia (92 Tests)
 npm run typecheck
 npm run build && npm run test:e2e        # Browser-E2E: Monopoly (Playwright)
 npm run build && npm run test:e2e:poker  # Browser-E2E: Poker inkl. Karten-Redaction
@@ -211,6 +211,19 @@ das Skript nicht.
   Mitspieler einfach mit ihrem alten Namen wieder bei
 - **Debug-Modus** (Lobby-Option): nächsten Würfelwurf setzen – für Tests
 
+### 📚 Fragenpakete (für die kommenden Trivia-Spiele)
+
+Über die Fußzeile der Startseite erreichbar. Ein Paket besteht aus sechs
+Kategorien (die klassischen Trivial-Pursuit-Farben) × fünf Schwierigkeits-
+stufen. Mitgeliefert sind 300 deutsche Fragen; eigene Pakete lassen sich
+anlegen, als JSON aus- und wieder einlesen und – auch offline – im Browser
+speichern.
+
+Das Abdeckungsraster im Editor ist zugleich die Jeopardy-Brettvorschau: Ein
+Paket ist bespielbar, wenn **jedes** Fach mindestens vier Fragen hat. Weniger
+geht nicht, weil Trivial Pursuit seine falschen Antwortmöglichkeiten aus den
+übrigen Antworten desselben Fachs zieht – ohne sie extra schreiben zu müssen.
+
 ---
 
 ## 🃏 Texas Hold'em Poker
@@ -254,6 +267,9 @@ shared/            Engines & Typen (laufen auf Server UND Client)
   registry.ts        Vertrag jedes Spiels gegenüber der Plattform + GAME_MODULES
   monopoly/module.ts Monopoly als Plattform-Modul (dünner Adapter)
   poker/module.ts    Poker als Plattform-Modul (dünner Adapter)
+  trivia/types.ts    Fragenformat für Jeopardy & Trivial Pursuit + Validierung
+  trivia/ask.ts      Fragen ziehen, Antworten prüfen, Ablenker bilden
+  trivia/packs/      Mitgeliefertes deutsches Paket (300 Fragen)
   types.ts           Monopoly-Typen: GameState, Player, TileDef, Aktionen …
   engine.ts          Monopoly-Spiellogik: applyAction(state, playerId, action)
   boards.ts          Brettstruktur + 4 eingebaute Editionen

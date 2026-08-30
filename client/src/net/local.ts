@@ -7,6 +7,8 @@
  */
 
 import type { BoardEdition } from '@shared/types';
+import type { TriviaPack } from '@shared/trivia/types';
+import { BUILT_IN_PACKS } from '@shared/trivia/packs/standard-de';
 import type { AnyGameState, GameId, RoomEnvelope } from '@shared/games';
 import type { PokerRules } from '@shared/poker/types';
 import { useStore } from '../state/store';
@@ -22,6 +24,39 @@ import {
 } from './localRoom';
 
 const STORE_VERSION = 2;
+
+/**
+ * Eigene Fragenpakete im Browser.
+ *
+ * Anders als Spielstände und Editionen ist das hier KEIN Stummel: Offline
+ * mit den eigenen Fragen zu spielen ist gerade der Sinn des lokalen Modus.
+ */
+const PACKS_KEY = 'playhub.packs';
+
+export function loadLocalPacks(): TriviaPack[] {
+  try {
+    const raw = localStorage.getItem(PACKS_KEY);
+    if (!raw) return [];
+    const list = JSON.parse(raw);
+    return Array.isArray(list) ? (list as TriviaPack[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Eingebaute plus eigene – das, was lokal zur Auswahl steht. */
+export function allLocalPacks(): TriviaPack[] {
+  return [...BUILT_IN_PACKS, ...loadLocalPacks()];
+}
+
+function persistLocalPacks(packs: TriviaPack[]): boolean {
+  try {
+    localStorage.setItem(PACKS_KEY, JSON.stringify(packs));
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 interface StoredLocal {
   v: number;
@@ -186,7 +221,7 @@ export interface StartLocalOptions {
 
 /** Legt eine lokale Partie an und startet sie sofort. */
 export function startLocalGame(opts: StartLocalOptions): { ok: boolean; error?: string } {
-  const room = createLocalRoom(opts);
+  const room = createLocalRoom({ ...opts, packs: allLocalPacks() });
   enterLocalMode();
   const r = attach(room);
   const started = r.start();
@@ -281,4 +316,34 @@ export const localApi: SocketApi = {
   },
   saveEdition: unavailable('Eigene Editionen speichern'),
   deleteEdition: unavailable('Eigene Editionen löschen'),
+
+  async savePack(pack: unknown) {
+    const cleaned = pack as TriviaPack | undefined;
+    if (!cleaned?.name) return { ok: false, error: 'Das Paket braucht einen Namen.' };
+    const own = loadLocalPacks();
+    // Eingebaute lassen sich nicht überschreiben – wie auf dem Server.
+    const id = !cleaned.id || BUILT_IN_PACKS.some((p) => p.id === cleaned.id)
+      ? `pack-${Math.random().toString(36).slice(2, 10)}`
+      : cleaned.id;
+    const stored: TriviaPack = { ...cleaned, id, builtIn: false };
+    const idx = own.findIndex((p) => p.id === id);
+    if (idx >= 0) own[idx] = stored;
+    else own.push(stored);
+
+    if (!persistLocalPacks(own)) {
+      return { ok: false, error: 'Paket konnte nicht gespeichert werden (Speicher voll).' };
+    }
+    useStore.getState().setCatalog([], [], allLocalPacks());
+    return { ok: true, pack: stored };
+  },
+
+  async deletePack(id: string) {
+    if (BUILT_IN_PACKS.some((p) => p.id === id)) {
+      return { ok: false, error: 'Eingebaute Pakete können nicht gelöscht werden.' };
+    }
+    const own = loadLocalPacks().filter((p) => p.id !== id);
+    if (!persistLocalPacks(own)) return { ok: false, error: 'Konnte nicht gespeichert werden.' };
+    useStore.getState().setCatalog([], [], allLocalPacks());
+    return { ok: true };
+  },
 };

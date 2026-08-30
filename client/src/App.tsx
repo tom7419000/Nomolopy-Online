@@ -7,6 +7,7 @@ import { JoinRoom } from './pages/JoinRoom';
 import { RoomPage } from './pages/Room';
 import { CLIENT_GAMES } from './games/registry';
 import { AdminPanel } from './games/monopoly/AdminPanel';
+import { PackEditor } from './games/trivia/PackEditor';
 import { CardModal, DebugDialog, PropertyDialog, SavesDialog, TradeDialog } from './games/monopoly/Dialogs';
 import { InstallBanner } from './components/InstallBanner';
 import { Toasts } from './components/Toasts';
@@ -63,6 +64,7 @@ export default function App() {
       {game && game.phase === 'playing' && <CardModal game={game} />}
 
       {dialog?.type === 'admin' && <AdminPanel />}
+      {dialog?.type === 'packs' && <PackEditor />}
       {dialog?.type === 'saves' && <SavesDialog />}
       {dialog?.type === 'debug' && game && <DebugDialog game={game} />}
       {dialog?.type === 'property' && game && <PropertyDialog game={game} tileId={dialog.tileId} />}

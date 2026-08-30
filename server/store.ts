@@ -10,10 +10,24 @@ import { fileURLToPath } from 'node:url';
 import type { BoardEdition, GameState, GroupId, SaveGameMeta } from '../shared/types';
 import { BOARD_STRUCTURE, BUILT_IN_EDITIONS, GROUP_ORDER } from '../shared/boards';
 import { randomId } from '../shared/util';
+import {
+  isTriviaCategory,
+  isTriviaLevel,
+  MAX_ANSWER_LEN,
+  MAX_PACK_DESC,
+  MAX_PACK_NAME,
+  MAX_PROMPT_LEN,
+  MAX_QUESTIONS_PER_PACK,
+  checkPack,
+  type TriviaPack,
+  type TriviaQuestion,
+} from '../shared/trivia/types';
+import { BUILT_IN_PACKS } from '../shared/trivia/packs/standard-de';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DATA_DIR = process.env.DATA_DIR || path.join(ROOT, 'data');
 const EDITIONS_FILE = path.join(DATA_DIR, 'editions.json');
+const PACKS_FILE = path.join(DATA_DIR, 'packs.json');
 const SAVES_DIR = path.join(DATA_DIR, 'saves');
 
 const MAX_IMAGE_CHARS = 400_000; // ~300 KB Binärdaten als Data-URL
@@ -132,6 +146,133 @@ export function deleteEdition(id: string): { ok: boolean; error?: string } {
   if (customEditions.length === before) return { ok: false, error: 'Edition nicht gefunden.' };
   persistCustomEditions();
   return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Fragenpakete
+//
+// Spiegelt die Editionen-Verwaltung darüber Zeile für Zeile: JSON-Datei im
+// DATA_DIR, Modul-Cache, eingebaut + eigene. Derselbe Grundsatz bei der
+// Bereinigung – Struktur aus dem Code, Inhalt vom Nutzer: Kategorien und
+// Stufen werden erzwungen, alle Texte sind frei (nur längenbegrenzt).
+// ---------------------------------------------------------------------------
+
+const MAX_PACK_JSON = 2_000_000;
+
+let customPacks: TriviaPack[] = loadCustomPacks();
+
+function loadCustomPacks(): TriviaPack[] {
+  try {
+    const raw = fs.readFileSync(PACKS_FILE, 'utf8');
+    const list = JSON.parse(raw);
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistCustomPacks(): void {
+  ensureDirs();
+  fs.writeFileSync(PACKS_FILE, JSON.stringify(customPacks), 'utf8');
+}
+
+export function allPacks(): TriviaPack[] {
+  return [...BUILT_IN_PACKS, ...customPacks];
+}
+
+export function getPack(id: string): TriviaPack | undefined {
+  return allPacks().find((p) => p.id === id);
+}
+
+/** Einzelne Frage bereinigen; `null`, wenn sie unbrauchbar ist. */
+function cleanQuestion(raw: unknown, index: number): TriviaQuestion | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+
+  const prompt = cleanString(r.prompt, MAX_PROMPT_LEN);
+  const answer = cleanString(r.answer, MAX_ANSWER_LEN);
+  if (!prompt || !answer) return null;
+  if (!isTriviaCategory(r.category)) return null;
+
+  const level = Number(r.level);
+  if (!isTriviaLevel(level)) return null;
+
+  const accept = Array.isArray(r.accept)
+    ? r.accept.map((a) => cleanString(a, MAX_ANSWER_LEN)).filter(Boolean).slice(0, 8)
+    : [];
+
+  return {
+    id: cleanString(r.id, 60) || `q-${randomId(6)}-${index}`,
+    category: r.category,
+    level,
+    prompt,
+    answer,
+    ...(accept.length ? { accept } : {}),
+  };
+}
+
+export function upsertPack(input: unknown): { ok: true; pack: TriviaPack } | { ok: false; error: string } {
+  if (typeof input !== 'object' || input === null) return { ok: false, error: 'Ungültiges Paket.' };
+  const raw = input as Record<string, unknown>;
+
+  const name = cleanString(raw.name, MAX_PACK_NAME);
+  if (!name) return { ok: false, error: 'Das Paket braucht einen Namen.' };
+
+  const rawQuestions = Array.isArray(raw.questions) ? raw.questions : [];
+  if (rawQuestions.length > MAX_QUESTIONS_PER_PACK) {
+    return { ok: false, error: `Höchstens ${MAX_QUESTIONS_PER_PACK} Fragen pro Paket.` };
+  }
+
+  const questions: TriviaQuestion[] = [];
+  const seenIds = new Set<string>();
+  rawQuestions.forEach((q, i) => {
+    const cleaned = cleanQuestion(q, i);
+    if (!cleaned) return;
+    // Doppelte IDs würden das Ziehen ohne Zurücklegen aushebeln.
+    if (seenIds.has(cleaned.id)) cleaned.id = `${cleaned.id}-${randomId(4)}`;
+    seenIds.add(cleaned.id);
+    questions.push(cleaned);
+  });
+
+  const requestedId = cleanString(raw.id, 60);
+  const isBuiltInId = BUILT_IN_PACKS.some((p) => p.id === requestedId);
+  const id = !requestedId || isBuiltInId ? `pack-${randomId(8)}` : requestedId;
+
+  const pack: TriviaPack = {
+    id,
+    name,
+    description: cleanString(raw.description, MAX_PACK_DESC),
+    builtIn: false,
+    language: cleanString(raw.language, 8, 'de') || 'de',
+    questions,
+  };
+
+  if (JSON.stringify(pack).length > MAX_PACK_JSON) {
+    return { ok: false, error: 'Paket zu groß.' };
+  }
+
+  const idx = customPacks.findIndex((p) => p.id === id);
+  if (idx >= 0) customPacks[idx] = pack;
+  else customPacks.push(pack);
+  persistCustomPacks();
+  return { ok: true, pack };
+}
+
+export function deletePack(id: string): { ok: boolean; error?: string } {
+  if (BUILT_IN_PACKS.some((p) => p.id === id)) {
+    return { ok: false, error: 'Eingebaute Pakete können nicht gelöscht werden.' };
+  }
+  const before = customPacks.length;
+  customPacks = customPacks.filter((p) => p.id !== id);
+  if (customPacks.length === before) return { ok: false, error: 'Paket nicht gefunden.' };
+  persistCustomPacks();
+  return { ok: true };
+}
+
+/** Erstes bespielbares Paket – Rückfall, wenn eine Auswahl ins Leere zeigt. */
+export function defaultPackId(): string {
+  const usable = allPacks().find((p) => checkPack(p).ok);
+  return (usable ?? BUILT_IN_PACKS[0]).id;
 }
 
 // ---------------------------------------------------------------------------

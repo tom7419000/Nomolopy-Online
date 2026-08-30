@@ -298,6 +298,9 @@ export function Home() {
       </div>
 
       <footer className="start-footer">
+        <button className="btn ghost" onClick={() => openDialog({ type: 'packs' })}>
+          📚 Fragenpakete (Trivia)
+        </button>
         <button className="btn ghost" onClick={() => openDialog({ type: 'admin' })}>
           ⚙️ Admin-Bereich (Monopoly-Editionen)
         </button>
