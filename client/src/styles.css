@@ -1390,6 +1390,10 @@ input[type='number'] { appearance: textfield; }
   .admin-grid { grid-template-columns: 1fr; }
   .trade-grid { grid-template-columns: 1fr; }
   .game-header { flex-wrap: wrap; }
+  /* Bricht der Raumname um, saß die Zusatzzeile bisher auf derselben
+     Grundlinie – und damit quer über der zweiten Titelzeile. */
+  .game-title { flex-direction: column; align-items: flex-start; gap: 0; min-width: 0; }
+  .game-title strong { line-height: 1.2; }
   .home-name-row { grid-template-columns: 1fr; }
   .home-lower { grid-template-columns: 1fr; }
   .poker-felt { margin: 56px 12px 76px; min-height: 320px; }
@@ -1623,3 +1627,227 @@ button,
 .pack-q-head .btn { margin-left: auto; }
 
 .pack-json { min-height: 220px; font-family: ui-monospace, monospace; font-size: 0.8rem; }
+
+/* ===========================================================================
+   Jeopardy
+   =========================================================================== */
+
+/* Die Kategoriefarben sind dieselben wie die Trivial-Pursuit-Käsefarben –
+   sie stehen kanonisch in shared/trivia/types.ts und hier nur nochmal als
+   CSS-Variablen, damit Brett und Fragekarte sie ohne Inline-Style nutzen. */
+:root {
+  --cat-geografie: #2b7fd4;
+  --cat-unterhaltung: #e05fa8;
+  --cat-geschichte: #e8c33a;
+  --cat-kunst: #a05ad6;
+  --cat-wissenschaft: #3aa960;
+  --cat-sport: #e2762e;
+}
+
+.jeopardy-layout { grid-template-columns: minmax(0, 1fr) 340px; grid-template-areas: 'table side'; }
+.jeopardy .side.right { grid-area: side; }
+.jeo-main {
+  grid-area: table;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* -- Brett ---------------------------------------------------------------- */
+
+.jeo-board {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+}
+.jeo-col { display: grid; grid-template-rows: auto repeat(5, minmax(0, 1fr)); gap: 6px; min-width: 0; }
+
+.jeo-cat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 8px 4px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--cat) 35%, var(--panel));
+  border: 1px solid var(--cat);
+  text-align: center;
+  font-size: 0.8rem;
+  line-height: 1.15;
+  hyphens: auto;
+}
+.jeo-cat > span:first-child { font-size: 1.3rem; line-height: 1; }
+.jeo-cat-name { font-weight: 700; }
+
+.jeo-cell {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  color: #ffd15c;
+  font-size: clamp(1rem, 2.4vw, 2rem);
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 120ms ease, filter 120ms ease;
+  /* Am Tablet ist das die Haupt-Trefferfläche. */
+  min-height: 44px;
+}
+.jeo-cell:hover:not(:disabled) { filter: brightness(1.25); transform: scale(1.03); }
+.jeo-cell:disabled { cursor: default; }
+.jeo-cell.used { background: var(--bg-2); border-style: dashed; color: transparent; }
+.jeo-cell:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* -- Punktetafel ---------------------------------------------------------- */
+
+.jeo-scores {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0;
+  margin: 0;
+}
+.jeo-score {
+  flex: 1 1 140px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  border-left-width: 4px;
+  background: var(--panel);
+}
+.jeo-score strong { font-size: 1.1rem; font-variant-numeric: tabular-nums; }
+.jeo-score strong.negative { color: #ff6b6b; }
+.jeo-score-name { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.jeo-score.me { background: var(--panel-2); }
+.jeo-score.away { opacity: 0.5; }
+.jeo-score.buzzed { box-shadow: 0 0 0 2px #ffd15c inset; }
+.jeo-score.answering { box-shadow: 0 0 0 2px var(--accent) inset; }
+.badge.away { background: #6b7280; }
+
+/* -- Die laufende Frage --------------------------------------------------- */
+
+.jeo-clue {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  overflow-y: auto;
+}
+.jeo-clue-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.jeo-clue-cat {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--cat) 35%, var(--panel));
+  border: 1px solid var(--cat);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+.jeo-clue-value { margin-left: auto; color: #ffd15c; font-size: 1.2rem; }
+
+.jeo-clock { font-variant-numeric: tabular-nums; color: var(--text-dim); }
+.jeo-clock.urgent { color: #ff6b6b; font-weight: 700; }
+
+.jeo-prompt { margin: 0; font-size: 1.15rem; line-height: 1.4; }
+.jeo-clue.layout-board .jeo-prompt {
+  /* Am Fernseher soll die Frage quer durch den Raum lesbar sein. */
+  font-size: clamp(1.3rem, 3.2vw, 2.6rem);
+  font-weight: 600;
+  text-align: center;
+  padding: 12px 0;
+}
+
+.jeo-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-top: auto;
+}
+.jeo-waiting { color: var(--text-dim); font-size: 1.05rem; text-align: center; margin: 0; }
+.jeo-turn { margin: 0; font-size: 1.05rem; }
+
+/* -- Der Buzzer ----------------------------------------------------------- */
+
+.jeo-buzzer {
+  /* Auf dem Handy soll man ihn ohne Hinsehen treffen. */
+  width: min(72vw, 320px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 6px solid #7a1620;
+  background: radial-gradient(circle at 38% 30%, #ff6b6b, #c81e30 62%, #8d1420);
+  color: #fff;
+  font-size: clamp(1.6rem, 8vw, 2.6rem);
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  box-shadow: 0 10px 0 #6d1019, 0 14px 26px rgba(0, 0, 0, 0.45);
+  transition: transform 60ms ease, box-shadow 60ms ease;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.jeo-buzzer:active { transform: translateY(8px); box-shadow: 0 2px 0 #6d1019, 0 6px 14px rgba(0, 0, 0, 0.45); }
+.jeo-buzzer:focus-visible { outline: 3px solid #fff; outline-offset: 4px; }
+
+/* Am gemeinsamen Gerät ersetzen Namensknöpfe den Buzzer. */
+.jeo-name-buzzers { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+.jeo-name-buzzer {
+  border-left-width: 4px;
+  font-size: 1.05rem;
+  padding: 14px 18px;
+  min-height: 52px;
+}
+
+/* -- Antworten und Werten ------------------------------------------------- */
+
+.jeo-answer-form { display: flex; flex-direction: column; gap: 10px; width: min(100%, 520px); }
+.jeo-answer-form.big .input { font-size: 1.3rem; padding: 14px; text-align: center; }
+.jeo-answer-form .btn-row { justify-content: center; }
+
+.jeo-submitted { margin: 0; text-align: center; display: flex; flex-direction: column; gap: 4px; }
+.jeo-submitted strong { font-size: clamp(1.2rem, 3vw, 2rem); }
+
+.jeo-judge { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+.jeo-judge .btn.big { min-width: 150px; min-height: 56px; font-size: 1.1rem; }
+
+.jeo-verdict { margin: 0; font-size: 1.3rem; font-weight: 700; }
+.jeo-verdict.right { color: var(--accent); }
+.jeo-verdict.wrong { color: #ff6b6b; }
+.jeo-solution { margin: 0; text-align: center; display: flex; flex-direction: column; gap: 4px; }
+.jeo-solution strong { font-size: clamp(1.3rem, 3.4vw, 2.2rem); color: #ffd15c; }
+
+/* -- Handy-Ansicht: Buzzer groß, Rest klein ------------------------------- */
+
+.jeo-main.player-view { justify-content: center; }
+.jeo-main.player-view .jeo-clue { border: none; background: none; padding: 4px; }
+.jeo-idle { display: flex; flex-direction: column; gap: 14px; justify-content: center; flex: 1; }
+
+@media (max-width: 1240px) {
+  .jeopardy-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-areas: 'table' 'side';
+  }
+}
+
+@media (max-width: 880px) {
+  .jeopardy-layout { grid-template-areas: 'table' 'side'; }
+  /* Sechs Spalten sind auf einem Handy nicht mehr tippbar – das Brett
+     kippt deshalb auf sechs ZEILEN mit fünf Feldern. */
+  .jeo-board { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .jeo-col { grid-template-rows: none; grid-template-columns: 1.6fr repeat(5, minmax(0, 1fr)); align-items: stretch; }
+  .jeo-cat { flex-direction: row; gap: 6px; justify-content: flex-start; padding: 8px; text-align: left; }
+  .jeo-cell { font-size: 1rem; }
+}

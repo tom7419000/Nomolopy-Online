@@ -13,11 +13,12 @@
  * Browser und im Testlauf.
  */
 
-import type { ActionResult, BoardEdition } from './types';
+import type { ActionResult, BoardEdition, ChatMessage } from './types';
 import type { GameId, GameStateMap } from './games';
 import type { TriviaPack } from './trivia/types';
 import { monopolyModule } from './monopoly/module';
 import { pokerModule } from './poker/module';
+import { jeopardyModule } from './jeopardy/module';
 
 /** Was die Plattform von einem Spieler wissen muss – spielunabhängig. */
 export interface SeatInfo {
@@ -28,6 +29,8 @@ export interface SeatInfo {
   connected: boolean;
   /** Endgültig raus (bankrott bzw. ausgestiegen) */
   eliminated: boolean;
+  /** Spielfigur bzw. Avatar als Emoji – wie das Spiel seine Leute zeigt. */
+  avatar: string;
 }
 
 export interface ChatAuthor {
@@ -36,7 +39,15 @@ export interface ChatAuthor {
   color: string;
 }
 
-/** Alles, was ein Spiel beim Anlegen von außen braucht. */
+/**
+ * Alles, was ein Spiel von außen braucht – beim Anlegen UND zur Laufzeit.
+ *
+ * Monopoly bettet seine Edition in den Zustand ein, damit Spielstände autark
+ * sind. Jeopardy tut das mit seinem Fragenpaket bewusst NICHT (es hat keine
+ * Spielstände, und die Antworten lägen sonst in jedem Client offen) – es
+ * schlägt jede Frage zur Laufzeit hier nach. Deshalb reichen `start`,
+ * `apply` und `tick` die Abhängigkeiten durch.
+ */
 export interface GameDeps {
   editions(): BoardEdition[];
   preset(id: string): { id: string; rules: Record<string, unknown> };
@@ -58,7 +69,7 @@ export interface GameModule<K extends GameId = GameId> {
   create(code: string, config: CreateConfig, deps: GameDeps, now: number): GameStateMap[K];
   addPlayer(s: GameStateMap[K], id: string, name: string, isHost: boolean): ActionResult;
   removeLobbyPlayer(s: GameStateMap[K], id: string): void;
-  start(s: GameStateMap[K], now: number): ActionResult;
+  start(s: GameStateMap[K], deps: GameDeps, now: number): ActionResult;
   /** Neue Runde: aufräumen und, falls nötig, Zuschauer nachrücken lassen. */
   resetForRematch(s: GameStateMap[K], ctx: RematchContext): void;
 
@@ -79,8 +90,24 @@ export interface GameModule<K extends GameId = GameId> {
   transferHost(s: GameStateMap[K], fromId: string): SeatInfo | null;
 
   // -- Aktionen -----------------------------------------------------------
-  apply(s: GameStateMap[K], playerId: string, action: unknown, now: number): ActionResult;
+  apply(s: GameStateMap[K], playerId: string, action: unknown, deps: GameDeps, now: number): ActionResult;
   chat(s: GameStateMap[K], author: ChatAuthor, text: string): ActionResult;
+  /**
+   * Der bisherige Chat-Verlauf – für die Lobby, die kein Spiel kennt.
+   *
+   * Die Spieltische lesen ihren eigenen Zustand direkt und typsicher; nur
+   * `Room.tsx` steht vor „irgendeinem" Zustand und hätte sonst geraten.
+   */
+  messages(s: GameStateMap[K]): ChatMessage[];
+  /**
+   * Systemzeile ins Protokoll des Spiels („X ist wieder verbunden").
+   *
+   * Die Plattform schreibt sie, die Engines führen ihr Protokoll aber je
+   * selbst. Vorher stand dafür ein `if (gameId === 'poker')` im Server, mit
+   * einem `as never` und einem stillschweigenden else-Zweig – genau die
+   * Sorte Verzweigung, die diese Registry abschaffen soll.
+   */
+  systemLog(s: GameStateMap[K], text: string, playerId?: string): void;
   /** Raum-Einstellungen aus der Lobby übernehmen (ersetzt die Allowlist). */
   configure(s: GameStateMap[K], patch: Record<string, unknown>, deps: GameDeps): void;
   /** Optional: Spielfigur/Farbe neu würfeln (nur Monopoly). */
@@ -97,7 +124,7 @@ export interface GameModule<K extends GameId = GameId> {
   /** Nächste Frist, oder null wenn gerade keine Uhr läuft. */
   deadline(s: GameStateMap[K], now: number): number | null;
   /** Zeit weiterlaufen lassen; true, wenn sich etwas geändert hat. */
-  tick(s: GameStateMap[K], now: number): boolean;
+  tick(s: GameStateMap[K], deps: GameDeps, now: number): boolean;
   /** Am gemeinsamen Gerät gelten andere Regeln (keine Zuguhr, längere Pausen). */
   localAdjust?(s: GameStateMap[K], now: number): void;
 
@@ -108,6 +135,16 @@ export interface GameModule<K extends GameId = GameId> {
     saveLoad: boolean;
     /** Darf jemand mit demselben Namen wieder auf seinen Sitz? */
     rejoinByName: boolean;
+    /**
+     * Bringt es etwas, die Ansicht am gemeinsamen Gerät zum Handelnden zu
+     * drehen? (Feste Plätze, siehe `LocalSeating`.)
+     *
+     * Bei Monopoly und Poker ja – da schaut einer auf sein Brett bzw. seine
+     * Karten. Bei Jeopardy nein: alle lesen dieselbe Frage, und sie zu einem
+     * einzelnen zu drehen macht sie für die anderen unlesbar. Ohne dieses
+     * Flag stünde im lokalen Setup ein Schalter, der nichts tut.
+     */
+    rotatesToActor: boolean;
   };
 }
 
@@ -139,6 +176,7 @@ export function assertNever(x: never, what = 'Fall'): never {
 export const GAME_MODULES: { [K in GameId]: GameModule<K> } = {
   monopoly: monopolyModule,
   poker: pokerModule,
+  jeopardy: jeopardyModule,
 };
 
 /**

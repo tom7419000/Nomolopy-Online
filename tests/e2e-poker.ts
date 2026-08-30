@@ -80,13 +80,20 @@ async function checkDown(pages: Page[]): Promise<void> {
 async function main() {
   fs.mkdirSync(SHOTS, { recursive: true });
   const dataDir = fs.mkdtempSync(path.join(process.env.TMPDIR ?? '/tmp', 'playhub-poker-e2e-'));
+  // `detached` gibt dem Server eine eigene Prozessgruppe. Ohne das trifft
+  // `kill()` nur die npx-Hülle: der Node-Prozess darunter überlebt, hält den
+  // Port – und der NÄCHSTE Lauf redet dann mit dem alten Server, statt
+  // abzubrechen. Ein grüner Test gegen veralteten Code ist schlimmer als
+  // ein roter.
   const server = spawn('npx', ['tsx', 'server/index.ts'], {
     env: { ...process.env, PORT: String(PORT), DATA_DIR: dataDir, BASE_PATH },
     stdio: 'inherit',
+    detached: true,
   });
   const stopServer = () => {
     try {
-      server.kill();
+      // Negative PID = die ganze Prozessgruppe, also auch das Kind von npx.
+      if (server.pid) process.kill(-server.pid, 'SIGKILL');
     } catch {
       // schon beendet
     }

@@ -8,6 +8,7 @@
 import { io } from 'socket.io-client';
 import type { GameId, RoomEnvelope } from '@shared/games';
 import type { PokerRules } from '@shared/poker/types';
+import type { JeopardyRules } from '@shared/jeopardy/types';
 import { useStore, loadSession, saveSession, clearSession } from '../state/store';
 import { isLocal } from './mode';
 
@@ -142,6 +143,7 @@ export interface CreateRoomOptions {
   editionId?: string;
   presetId?: string;
   pokerRules?: Partial<PokerRules>;
+  jeopardyRules?: Partial<JeopardyRules>;
 }
 
 export const socketApi = {
@@ -167,8 +169,14 @@ export const socketApi = {
   /**
    * Spielzug. Der Server entscheidet anhand des Raums, welche Engine ihn
    * bekommt – deshalb reicht EINE Methode für alle Spiele.
+   *
+   * `_seatId` wird hier ABSICHTLICH ignoriert. Am gemeinsamen Gerät braucht
+   * die Oberfläche einen Weg, für einen anderen Sitz zu handeln (Jeopardys
+   * „wer war zuerst?"); online wäre genau das die Übernahme einer fremden
+   * Identität. Die Identität kommt dort aus dem Socket, nicht aus der
+   * Nachricht – deshalb ist der Parameter nur Teil der gemeinsamen Form.
    */
-  action(action: unknown) {
+  action(action: unknown, _seatId?: string) {
     return withErrorToast(call('game:action', action));
   },
 
@@ -193,6 +201,7 @@ export const socketApi = {
     presetId?: string;
     rules?: Record<string, unknown>;
     poker?: Partial<PokerRules>;
+    jeopardy?: Partial<JeopardyRules>;
   }) {
     return withErrorToast(call('lobby:configure', payload));
   },

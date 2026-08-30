@@ -11,6 +11,8 @@ import type { TriviaPack } from '@shared/trivia/types';
 import { BUILT_IN_PACKS } from '@shared/trivia/packs/standard-de';
 import type { AnyGameState, GameId, RoomEnvelope } from '@shared/games';
 import type { PokerRules } from '@shared/poker/types';
+import type { JeopardyRules } from '@shared/jeopardy/types';
+import { moduleFor } from '@shared/registry';
 import { useStore } from '../state/store';
 import { LOCAL_GAME_KEY, setMode } from './mode';
 import { resumeSocket, suspendSocket, type SocketApi } from './socket';
@@ -157,7 +159,8 @@ function readStored(): StoredLocal | null {
  */
 function publish(room: LocalRoom, env: RoomEnvelope, seatId: string | null): void {
   const store = useStore.getState();
-  const players = env.monopoly?.players ?? env.poker?.players ?? [];
+  const state = env[env.meta.gameId];
+  const players = state ? moduleFor(env.meta.gameId).seats(state) : [];
   const seat = players.find((p) => p.id === seatId) ?? players[0];
 
   store.setSession({
@@ -174,9 +177,12 @@ function publish(room: LocalRoom, env: RoomEnvelope, seatId: string | null): voi
 
 function attach(room: LocalRoom): LocalRoomRunner {
   runner?.stop();
-  const r = new LocalRoomRunner(room, {
-    publish: (env, seatId) => publish(room, env, seatId),
-  });
+  const r = new LocalRoomRunner(
+    room,
+    { publish: (env, seatId) => publish(room, env, seatId) },
+    // Auch nach einem Reload muss Jeopardy seine Fragen wiederfinden.
+    { packs: allLocalPacks() }
+  );
   runner = r;
   return r;
 }
@@ -214,6 +220,7 @@ export interface StartLocalOptions {
   editionId?: string;
   presetId?: string;
   pokerRules?: Partial<PokerRules>;
+  jeopardyRules?: Partial<JeopardyRules>;
   editions?: BoardEdition[];
   seatMode?: LocalSeating['mode'];
   seatEdges?: SeatEdge[];
@@ -281,9 +288,9 @@ export const localApi: SocketApi = {
     leaveLocalMode();
   },
 
-  async action(action: unknown) {
+  async action(action: unknown, seatId?: string) {
     const r = requireRunner();
-    return withToast(r ? r.action(action) : { ok: false });
+    return withToast(r ? r.action(action, seatId) : { ok: false });
   },
 
   async chat(text: string) {

@@ -15,6 +15,7 @@ import {
   applyPokerAction,
   createPoker,
   getPokerPlayer,
+  pokerLog,
   pokerTick,
   removePokerLobbyPlayer,
   resetPokerToLobby,
@@ -58,7 +59,7 @@ export const pokerModule: GameModule<'poker'> = {
     removePokerLobbyPlayer(full(s), id);
   },
 
-  start(s, now) {
+  start(s, _deps, now) {
     return startPoker(full(s), now);
   },
 
@@ -91,6 +92,7 @@ export const pokerModule: GameModule<'poker'> = {
       isHost: p.isHost,
       connected: p.connected,
       eliminated: p.out,
+      avatar: p.avatar,
     }));
   },
 
@@ -118,15 +120,24 @@ export const pokerModule: GameModule<'poker'> = {
       isHost: true,
       connected: next.connected,
       eliminated: next.out,
+      avatar: next.avatar,
     };
   },
 
-  apply(s, playerId, action, now) {
+  apply(s, playerId, action, _deps, now) {
     return applyPokerAction(full(s), playerId, action as PokerAction, now);
   },
 
   chat(s, author, text) {
     return addPokerChat(full(s), author, text);
+  },
+
+  messages(s) {
+    return s.chat;
+  },
+
+  systemLog(s, text, playerId) {
+    pokerLog(full(s), 'system', text, playerId);
   },
 
   configure(s, patch) {
@@ -156,7 +167,7 @@ export const pokerModule: GameModule<'poker'> = {
     return null;
   },
 
-  tick(s, now) {
+  tick(s, _deps, now) {
     return pokerTick(full(s), now);
   },
 
@@ -174,5 +185,6 @@ export const pokerModule: GameModule<'poker'> = {
     spectators: true,
     saveLoad: false,
     rejoinByName: true,
+    rotatesToActor: true,
   },
 };

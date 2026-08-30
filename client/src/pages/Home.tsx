@@ -7,6 +7,9 @@ import { useMemo, useState } from 'react';
 import { GAME_CATALOG, getGameInfo, type GameId, type GameInfo } from '@shared/games';
 import { DEFAULT_POKER_RULES } from '@shared/poker/rules';
 import type { PokerRules } from '@shared/poker/types';
+import { DEFAULT_JEOPARDY_RULES } from '@shared/jeopardy/rules';
+import type { JeopardyRules } from '@shared/jeopardy/types';
+import { moduleFor } from '@shared/registry';
 import { api } from '../net';
 import { loadName, saveName, useStore } from '../state/store';
 import { Chat } from '../components/Chat';
@@ -66,6 +69,7 @@ function CreateRoomDialog({
   const [editionId, setEditionId] = useState('classic-de');
   const [presetId, setPresetId] = useState('classic');
   const [poker, setPoker] = useState<PokerRules>({ ...DEFAULT_POKER_RULES });
+  const [jeopardy, setJeopardy] = useState<JeopardyRules>({ ...DEFAULT_JEOPARDY_RULES });
   const [busy, setBusy] = useState(false);
 
   async function create() {
@@ -80,6 +84,7 @@ function CreateRoomDialog({
       editionId,
       presetId,
       pokerRules: poker,
+      jeopardyRules: jeopardy,
     });
     setBusy(false);
     if (r.ok) onClose();
@@ -126,6 +131,8 @@ function CreateRoomDialog({
         setPresetId={setPresetId}
         poker={poker as unknown as Record<string, unknown>}
         setPoker={(v) => setPoker(v as unknown as PokerRules)}
+        jeopardy={jeopardy as unknown as Record<string, unknown>}
+        setJeopardy={(v) => setJeopardy(v as unknown as JeopardyRules)}
       />
 
       <button className="btn primary big" disabled={busy} onClick={create}>
@@ -275,8 +282,16 @@ export function Home() {
                       {r.phase === 'playing' && ' · läuft'}
                     </span>
                   </span>
-                  <button className="btn small" disabled={!joinable && r.gameId !== 'poker'} onClick={() => join(r.code)}>
-                    {r.phase === 'lobby' ? 'Beitreten' : r.gameId === 'poker' ? 'Zuschauen' : 'Läuft'}
+                  <button
+                    className="btn small"
+                    disabled={!joinable && !moduleFor(r.gameId).caps.spectators}
+                    onClick={() => join(r.code)}
+                  >
+                    {r.phase === 'lobby'
+                      ? 'Beitreten'
+                      : moduleFor(r.gameId).caps.spectators
+                        ? 'Zuschauen'
+                        : 'Läuft'}
                   </button>
                 </li>
               );

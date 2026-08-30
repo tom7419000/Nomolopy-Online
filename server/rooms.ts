@@ -1,12 +1,15 @@
 /**
  * Plattform-Schicht von PlayHub: Räume, Spieler/Zuschauer, Lobby-Chat und
- * öffentliche Raumliste. Jeder Raum trägt genau EIN Spiel (Monopoly oder
- * Poker); die Spiellogik selbst lebt in den Engines unter shared/.
+ * öffentliche Raumliste. Jeder Raum trägt genau EIN Spiel; welches, sagt
+ * `meta.gameId`, und die Spiellogik dazu liefert das Modul aus der Registry.
+ * Diese Datei kennt keinen einzigen Spielnamen mehr – bis auf die
+ * Spielstände, die bewusst Monopoly-eigen bleiben.
  *
- * Synchronisation wie gehabt: Nach jeder Aktion geht der komplette Zustand
- * an alle Clients im Raum. Bei Poker bekommt jeder Empfänger eine redigierte
- * Sicht (kein Deck, fremde Hole Cards verdeckt) – die Karten verlassen den
- * Server also nie unverschlüsselt für alle.
+ * Synchronisation: Nach jeder Aktion geht der komplette Zustand an alle
+ * Clients im Raum, vorher durch `redact` des Moduls. Poker rechnet die Sicht
+ * pro Empfänger (fremde Hole Cards), Jeopardy einheitlich für alle (die
+ * richtige Antwort ist vor jedem verborgen) – das entscheidet
+ * `redactPerViewer`.
  */
 
 import type { Server, Socket } from 'socket.io';
@@ -29,7 +32,6 @@ import {
   type RoomMeta,
   type SpectatorInfo,
 } from '../shared/games';
-import { pokerLog } from '../shared/poker/engine';
 import { moduleFor, type SeatInfo } from '../shared/registry';
 import * as store from './store';
 
@@ -41,10 +43,6 @@ const deps = {
 };
 
 /**
- * Protokollzeile ins Spiel schreiben, egal welches Spiel.
- * (Die Engines haben je eigene log-Funktionen; die Plattform braucht nur eine.)
- */
-/**
  * Monopoly-Zustand des Raums, sonst null.
  *
  * Spielstände bleiben bewusst Monopoly-eigen (`caps.saveLoad`): ein
@@ -55,9 +53,12 @@ function monopolyState(room: Room): GameState | null {
   return room.meta.gameId === 'monopoly' ? (room.state as GameState) : null;
 }
 
+/**
+ * Protokollzeile ins Spiel schreiben, egal welches Spiel. Die Engines führen
+ * ihr Protokoll je selbst; welche Funktion das ist, weiß nur das Modul.
+ */
 function roomLog(room: Room, text: string, playerId?: string): void {
-  if (room.meta.gameId === 'poker') pokerLog(room.state as never, 'system', text, playerId);
-  else log(room.state as never, 'system', text, playerId);
+  mod(room).systemLog(room.state, text, playerId);
 }
 
 interface Room {
@@ -159,7 +160,7 @@ function scheduleRoomTimer(io: Server, room: Room): void {
     room.timer = null;
     // Der Raum kann inzwischen abgeräumt oder ersetzt worden sein.
     if (rooms.get(room.code) !== room) return;
-    if (m.tick(room.state, Date.now())) {
+    if (m.tick(room.state, deps, Date.now())) {
       broadcast(io, room);
     } else {
       scheduleRoomTimer(io, room);
@@ -553,7 +554,7 @@ export function registerHandlers(io: Server): void {
       if (!ctx) return reply(cb, { ok: false, error: 'Kein Raum.' });
       const { room, memberId } = ctx;
       if (!requireHost(room, memberId)) return reply(cb, { ok: false, error: 'Nur der Host kann starten.' });
-      const result = mod(room).start(room.state, Date.now());
+      const result = mod(room).start(room.state, deps, Date.now());
       reply(cb, { ...result });
       if (result.ok) broadcast(io, room);
     });
@@ -604,7 +605,7 @@ export function registerHandlers(io: Server): void {
         if (isSpectator(room, memberId)) {
           return reply(cb, { ok: false, error: 'Zuschauer können nicht mitspielen.' });
         }
-        const result = mod(room).apply(room.state, memberId, payload, Date.now());
+        const result = mod(room).apply(room.state, memberId, payload, deps, Date.now());
         reply(cb, { ...result });
         if (result.ok) broadcast(io, room);
       } catch (e) {

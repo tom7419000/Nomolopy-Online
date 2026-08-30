@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import './net';
+import { moduleFor } from '@shared/registry';
 import { useIsMyTurn, useStore } from './state/store';
 import { navigate, roomHash, useHashRoute } from './hooks/useHashRoute';
 import { Home } from './pages/Home';
@@ -16,7 +17,6 @@ export default function App() {
   const room = useStore((s) => s.room);
   const isLocalGame = useStore((s) => s.session?.mode === 'local');
   const game = useStore((s) => s.game);
-  const poker = useStore((s) => s.poker);
   const dialog = useStore((s) => s.dialog);
   const isMyTurn = useIsMyTurn();
   const route = useHashRoute();
@@ -40,7 +40,10 @@ export default function App() {
     }
   }, [room, route.page, isLocalGame]);
 
-  const phase = game?.phase ?? poker?.phase ?? null;
+  // Über die Registry statt über eine `??`-Kette: die hätte bei einem neuen
+  // Spiel stumm `null` geliefert und die Partie in der Lobby festgehalten.
+  const state = room ? room[room.meta.gameId] : null;
+  const phase = state ? moduleFor(room!.meta.gameId).phase(state) : null;
 
   let screen: React.ReactNode;
   if (room && phase && phase !== 'lobby') {

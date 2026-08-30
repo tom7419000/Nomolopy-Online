@@ -6,6 +6,7 @@
 
 import type { GameState } from './types';
 import type { PokerView } from './poker/types';
+import type { JeopardyView } from './jeopardy/types';
 
 /**
  * Zustandstyp je Spiel – die EINE Stelle, an der die Spiele-Liste steht.
@@ -17,6 +18,7 @@ import type { PokerView } from './poker/types';
 export interface GameStateMap {
   monopoly: GameState;
   poker: PokerView;
+  jeopardy: JeopardyView;
 }
 
 export type GameId = keyof GameStateMap;
@@ -58,6 +60,17 @@ export const GAME_INFOS: Record<GameId, GameInfo> = {
     minPlayers: 2,
     maxPlayers: 9,
     duration: '20–90 min',
+  },
+  jeopardy: {
+    id: 'jeopardy',
+    name: 'Jeopardy',
+    tagline: 'Feld wählen, buzzern, antworten – wer weiß es zuerst?',
+    description:
+      'Die Quizshow als Brett: sechs Kategorien, fünf Stufen, 300 deutsche Fragen an Bord. Online zeigt ein großer Bildschirm das Brett, während alle mit dem Handy buzzern. Eigene Fragen lassen sich im Paket-Editor schreiben.',
+    emoji: '🎯',
+    minPlayers: 2,
+    maxPlayers: 8,
+    duration: '25–45 min',
   },
 };
 

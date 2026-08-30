@@ -5,6 +5,7 @@ import type { TriviaPack } from '@shared/trivia/types';
 import { BUILT_IN_PACKS } from '@shared/trivia/packs/standard-de';
 import type { LobbyChatMessage, PublicRoomInfo, RoomEnvelope } from '@shared/games';
 import type { PokerView } from '@shared/poker/types';
+import type { JeopardyView } from '@shared/jeopardy/types';
 import { moduleFor } from '@shared/registry';
 import { CLIENT_GAMES } from '../games/registry';
 import type { LocalSeating, SeatEdge } from '../net/localRoom';
@@ -51,6 +52,8 @@ interface AppStore {
   game: GameState | null;
   /** Bequemer Zugriff: redigierte Poker-Sicht, wenn der Raum Poker spielt */
   poker: PokerView | null;
+  /** Bequemer Zugriff: Jeopardy-Sicht, wenn der Raum Jeopardy spielt */
+  jeopardy: JeopardyView | null;
   lobbyRooms: PublicRoomInfo[];
   lobbyChat: LobbyChatMessage[];
   toasts: Toast[];
@@ -84,6 +87,7 @@ export const useStore = create<AppStore>((set, get) => ({
   room: null,
   game: null,
   poker: null,
+  jeopardy: null,
   lobbyRooms: [],
   lobbyChat: [],
   toasts: [],
@@ -99,6 +103,7 @@ export const useStore = create<AppStore>((set, get) => ({
     const { room: prevRoom, session, addToast } = get();
     const game = room?.monopoly ?? null;
     const poker = room?.poker ?? null;
+    const jeopardy = room?.jeopardy ?? null;
 
     if (room && session) {
       const gameId = room.meta.gameId;
@@ -130,7 +135,7 @@ export const useStore = create<AppStore>((set, get) => ({
       }
     }
 
-    set({ room, game, poker });
+    set({ room, game, poker, jeopardy });
   },
 
   setSession: (session) => set({ session }),

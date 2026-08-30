@@ -13,9 +13,15 @@ import type { ComponentType } from 'react';
 import type { AnyGameState, GameId } from '@shared/games';
 import { GameTable } from './monopoly/GameTable';
 import { PokerTable } from './poker/PokerTable';
-import { MonopolySettings, PokerSettings } from '../pages/lobbySettings';
-import { MonopolyCreateFields, PokerCreateFields } from '../pages/createFields';
+import { JeopardyTable } from './jeopardy/JeopardyTable';
+import { MonopolySettings, PokerSettings, JeopardySettings } from '../pages/lobbySettings';
+import {
+  MonopolyCreateFields,
+  PokerCreateFields,
+  JeopardyCreateFields,
+} from '../pages/createFields';
 import { monopolyNotify } from './monopoly/notify';
+import { jeopardyNotify } from './jeopardy/notify';
 
 /** Kontext für spielspezifische Hinweise beim Zustandswechsel. */
 export interface NotifyContext {
@@ -46,6 +52,8 @@ export interface CreateFieldsProps {
   setPresetId(v: string): void;
   poker: Record<string, unknown>;
   setPoker(v: Record<string, unknown>): void;
+  jeopardy: Record<string, unknown>;
+  setJeopardy(v: Record<string, unknown>): void;
   /** Lokal gibt es keine Bedenkzeit – das Feld entfällt dort. */
   local?: boolean;
 }
@@ -61,5 +69,11 @@ export const CLIENT_GAMES: Record<GameId, ClientGame> = {
     Table: PokerTable,
     LobbySettings: PokerSettings,
     CreateFields: PokerCreateFields,
+  },
+  jeopardy: {
+    Table: JeopardyTable,
+    LobbySettings: JeopardySettings,
+    CreateFields: JeopardyCreateFields,
+    notify: jeopardyNotify,
   },
 };

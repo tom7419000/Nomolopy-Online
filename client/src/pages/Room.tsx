@@ -5,6 +5,7 @@
 
 import { useState } from 'react';
 import { getGameInfo } from '@shared/games';
+import { moduleFor } from '@shared/registry';
 import { api } from '../net';
 import { useStore } from '../state/store';
 import { Chat } from '../components/Chat';
@@ -54,23 +55,17 @@ export function RoomPage() {
   const room = useStore((s) => s.room)!;
   const LobbySettings = CLIENT_GAMES[room.meta.gameId].LobbySettings;
   const game = useStore((s) => s.game);
-  const poker = useStore((s) => s.poker);
   const session = useStore((s) => s.session);
   const [busy, setBusy] = useState(false);
 
   const info = getGameInfo(room.meta.gameId);
-  const players = (game?.players ?? poker?.players ?? []) as {
-    id: string;
-    name: string;
-    color: string;
-    isHost: boolean;
-    connected: boolean;
-    token?: string;
-    avatar?: string;
-  }[];
+  // Sitze und Chat kommen aus dem Modul. Die frühere `game ?? poker`-Kette
+  // hätte bei einem neuen Spiel stumm eine leere Lobby gezeigt.
+  const state = room[room.meta.gameId];
+  const players = state ? moduleFor(room.meta.gameId).seats(state) : [];
   const me = players.find((p) => p.id === session?.playerId);
   const isHost = me?.isHost ?? false;
-  const chat = game?.chat ?? poker?.chat ?? [];
+  const chat = state ? moduleFor(room.meta.gameId).messages(state) : [];
   const minPlayers = info.minPlayers;
   const canStart = players.length >= minPlayers;
 
@@ -101,7 +96,7 @@ export function RoomPage() {
             {players.map((p) => (
               <li key={p.id} style={{ borderLeftColor: p.color }}>
                 <span className="token" aria-hidden>
-                  {p.token ?? p.avatar}
+                  {p.avatar}
                 </span>
                 <span className="name">
                   {p.name}

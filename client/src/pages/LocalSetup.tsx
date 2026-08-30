@@ -7,9 +7,12 @@
 
 import { useState } from 'react';
 import { getGameInfo, type GameId } from '@shared/games';
+import { moduleFor } from '@shared/registry';
 import { BUILT_IN_EDITIONS } from '@shared/boards';
 import { DEFAULT_POKER_RULES } from '@shared/poker/rules';
 import type { PokerRules } from '@shared/poker/types';
+import { DEFAULT_JEOPARDY_RULES } from '@shared/jeopardy/rules';
+import type { JeopardyRules } from '@shared/jeopardy/types';
 import { PLAYER_COLORS } from '@shared/util';
 import { startLocalGame } from '../net';
 import {
@@ -26,6 +29,9 @@ export function LocalSetup({ gameId, onClose }: { gameId: GameId; onClose: () =>
   const info = getGameInfo(gameId);
   const CreateFields = CLIENT_GAMES[gameId].CreateFields;
   const addToast = useStore((s) => s.addToast);
+  // Nicht jedes Spiel gewinnt etwas durch feste Plätze – bei einem Quiz
+  // lesen alle dieselbe Frage.
+  const canRotate = moduleFor(gameId).caps.rotatesToActor;
 
   const [names, setNames] = useState<string[]>(() => [loadName() || 'Spieler 1', 'Spieler 2']);
   const [seatMode, setSeatMode] = useState<'pass' | 'fixed'>('pass');
@@ -35,6 +41,7 @@ export function LocalSetup({ gameId, onClose }: { gameId: GameId; onClose: () =>
     ...DEFAULT_POKER_RULES,
     blindIncreaseMinutes: 0,
   });
+  const [jeopardy, setJeopardy] = useState<JeopardyRules>({ ...DEFAULT_JEOPARDY_RULES });
 
   // Mehr Spieler als Kanten: „feste Plätze" fällt dann automatisch weg.
   // Bewusst abgeleitet statt per setState im Render – das gäbe eine
@@ -90,8 +97,10 @@ export function LocalSetup({ gameId, onClose }: { gameId: GameId; onClose: () =>
       editionId,
       presetId,
       pokerRules: gameId === 'poker' ? poker : undefined,
-      seatMode: effectiveSeatMode,
-      seatEdges: effectiveSeatMode === 'fixed' ? cleaned.map((_, i) => edgeOf(i)) : undefined,
+      jeopardyRules: gameId === 'jeopardy' ? jeopardy : undefined,
+      seatMode: canRotate ? effectiveSeatMode : 'pass',
+      seatEdges:
+        canRotate && effectiveSeatMode === 'fixed' ? cleaned.map((_, i) => edgeOf(i)) : undefined,
     });
     if (r.ok) onClose();
   }
@@ -103,6 +112,15 @@ export function LocalSetup({ gameId, onClose }: { gameId: GameId; onClose: () =>
         übertragen – die Partie läuft auch im Flugmodus.
       </p>
 
+      {!canRotate && (
+        <p className="hint">
+          🪑 Das Gerät liegt am besten in der Mitte: Bei {info.name} lesen alle
+          dieselbe Frage, also dreht sich hier nichts zu einem Einzelnen.
+        </p>
+      )}
+
+      {canRotate && (
+        <>
       <h3 className="setup-title">Wie liegt das Gerät?</h3>
       <div className="seat-mode-row">
         <button
@@ -138,6 +156,8 @@ export function LocalSetup({ gameId, onClose }: { gameId: GameId; onClose: () =>
           unten
         </div>
       )}
+        </>
+      )}
 
       <h3 className="setup-title">Spieler ({names.length})</h3>
       <ul className="seat-setup">
@@ -151,7 +171,7 @@ export function LocalSetup({ gameId, onClose }: { gameId: GameId; onClose: () =>
               onChange={(e) => setName(i, e.target.value)}
               aria-label={`Name Spieler ${i + 1}`}
             />
-            {effectiveSeatMode === 'fixed' && (
+            {canRotate && effectiveSeatMode === 'fixed' && (
               <select
                 className="input small seat-edge-select"
                 value={edgeOf(i)}
@@ -190,6 +210,8 @@ export function LocalSetup({ gameId, onClose }: { gameId: GameId; onClose: () =>
         setPresetId={setPresetId}
         poker={poker as unknown as Record<string, unknown>}
         setPoker={(v) => setPoker(v as unknown as PokerRules)}
+        jeopardy={jeopardy as unknown as Record<string, unknown>}
+        setJeopardy={(v) => setJeopardy(v as unknown as JeopardyRules)}
         local
       />
 

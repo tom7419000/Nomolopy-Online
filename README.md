@@ -1,12 +1,13 @@
 # 🎮 PlayHub – Spieleabend online
 
 Eine Gaming-Plattform mit **Echtzeit-Multiplayer**, auf der du mit Freunden in
-privaten oder öffentlichen Räumen spielst – aktuell mit zwei Spielen:
+privaten oder öffentlichen Räumen spielst – aktuell mit drei Spielen:
 
 | | Spiel | Spieler | Besonderheiten |
 |---|---|---|---|
-| 🎲 | **Monopoly** | 2–8 | Originalregeln, eigene Editionen (Berlin, München, USA …), Spielstände |
+| 🎲 | **Monopoly** | 2–8 | Originalregeln inkl. Auktionen, eigene Editionen (Berlin, München, USA …), Spielstände |
 | 🃏 | **Texas Hold'em Poker** | 2–9 | No-Limit, steigende Blinds, Side-Pots, Auto-Fold-Timer, Zuschauer-Modus |
+| 🎯 | **Jeopardy** | 2–8 | 300 deutsche Fragen, Brett auf dem Fernseher + Buzzer auf den Handys |
 
 React + TypeScript im Frontend, Node.js + Socket.io als serverautoritatives
 Backend, eine gemeinsame Engine pro Spiel für Regeln und Validierung.
@@ -37,17 +38,18 @@ LAN einfach `http://<deine-IP>:3001` an die Mitspieler geben. Port per `PORT`,
 Datenverzeichnis (Editionen/Spielstände) per `DATA_DIR` konfigurierbar.
 
 ```bash
-npm test                                 # Unit-Tests: Monopoly, Poker, lokaler Raum, Trivia (92 Tests)
+npm test                                    # Unit-Tests: Monopoly, Poker, lokaler Raum, Trivia, Jeopardy (120 Tests)
 npm run typecheck
-npm run build && npm run test:e2e        # Browser-E2E: Monopoly (Playwright)
-npm run build && npm run test:e2e:poker  # Browser-E2E: Poker inkl. Karten-Redaction
-npm run build && npm run test:e2e:pwa    # Browser-E2E: Manifest, Service Worker, Offline
-npm run build && npm run test:e2e:local  # Browser-E2E: Pass & Play mit abgeschaltetem Netz
+npm run build && npm run test:e2e           # Browser-E2E: Monopoly inkl. Auktion (Playwright)
+npm run build && npm run test:e2e:poker     # Browser-E2E: Poker inkl. Karten-Redaction
+npm run build && npm run test:e2e:pwa       # Browser-E2E: Manifest, Service Worker, Offline
+npm run build && npm run test:e2e:local     # Browser-E2E: Pass & Play mit abgeschaltetem Netz
+npm run build && npm run test:e2e:jeopardy  # Browser-E2E: Fernseher + zwei Handys, lokal
 ```
 
-> Die E2E-Tests starten je einen eigenen Server (Ports 4096–4099). Bricht ein
-> Lauf hart ab, können Server zurückbleiben – dann vor dem nächsten Lauf
-> `pkill -f "server/index.ts"` ausführen.
+> Die E2E-Tests starten je einen eigenen Server (Ports 4096–4099) und räumen
+> ihn über die Prozessgruppe wieder ab. Bleibt nach einem harten Abbruch doch
+> einmal etwas stehen: `pkill -f "server/index.ts"`.
 
 ---
 
@@ -55,8 +57,8 @@ npm run build && npm run test:e2e:local  # Browser-E2E: Pass & Play mit abgescha
 
 Neben dem Online-Modus lässt sich **an einem einzigen Gerät** spielen: Tablet
 in die Tischmitte, alle sitzen drumherum, das Gerät wandert reihum. Auf der
-Startseite bei Monopoly oder Poker auf **„📱 Am Gerät spielen"** tippen,
-Namen eintragen, los.
+Startseite beim gewünschten Spiel auf **„📱 Am Gerät spielen"** tippen,
+Namen eintragen, los. Alle drei Spiele können das.
 
 - **Kein Server, kein Netz.** Die Spiel-Engine läuft im Browser. Der Modus
   funktioniert im Flugmodus, im Zug und im Garten – die Verbindung wird für
@@ -80,6 +82,11 @@ Beim Anlegen der Partie wird gewählt, wie das Gerät auf dem Tisch liegt:
 Feste Plätze gehen bis vier Spieler – ein Tisch hat vier Kanten. Der Text auf
 den Feldern wird bewusst **nicht** gegengedreht: bei 180° liest das Brett für
 die Gegenübersitzenden kopfüber, genau wie ein echtes Brett.
+
+Bei **Jeopardy** entfällt die Wahl, und das Setup sagt auch warum: Alle lesen
+dieselbe Frage, sie zu einem Einzelnen zu drehen machte sie für die anderen
+unlesbar. Ob ein Spiel etwas davon hat, steht als `caps.rotatesToActor` an
+seinem Modul – so kann kein Schalter dastehen, der nichts tut.
 
 Gedreht wird nur das Spielfeld, nicht die App-Hülle. Toasts, Dialoge und die
 Kopfzeile bleiben aufrecht – sie hängen an `position: fixed` und an
@@ -211,7 +218,7 @@ das Skript nicht.
   Mitspieler einfach mit ihrem alten Namen wieder bei
 - **Debug-Modus** (Lobby-Option): nächsten Würfelwurf setzen – für Tests
 
-### 📚 Fragenpakete (für die kommenden Trivia-Spiele)
+### 📚 Fragenpakete (Jeopardy, später Trivial Pursuit)
 
 Über die Fußzeile der Startseite erreichbar. Ein Paket besteht aus sechs
 Kategorien (die klassischen Trivial-Pursuit-Farben) × fünf Schwierigkeits-
@@ -223,6 +230,66 @@ Das Abdeckungsraster im Editor ist zugleich die Jeopardy-Brettvorschau: Ein
 Paket ist bespielbar, wenn **jedes** Fach mindestens vier Fragen hat. Weniger
 geht nicht, weil Trivial Pursuit seine falschen Antwortmöglichkeiten aus den
 übrigen Antworten desselben Fachs zieht – ohne sie extra schreiben zu müssen.
+
+---
+
+## 🎯 Jeopardy
+
+- **2–8 Spieler**, Brett aus **sechs Kategorien × fünf Stufen** = 30 Feldern
+- Fragen aus dem gewählten **Fragenpaket** (mitgeliefert: 300 deutsche Fragen);
+  gezogen wird erst beim Anklicken eines Feldes, also ist dasselbe Brett
+  wiederspielbar
+- **Frei geantwortet**, nicht angekreuzt – und **die Mitspieler werten**.
+  Der Server rechnet vorher einen Vorschlag (normalisierter Vergleich mit
+  Tippfehlertoleranz gegen die Antwort und ihre Alternativschreibweisen) und
+  zeigt ihn vorausgewählt; meist ist die Wertung damit ein bestätigender Tipp.
+  Mehrheit entscheidet, Gleichstand geht zugunsten des Spielers.
+- **Richtig**: Punkte und man wählt weiter. **Falsch**: Abzug (abschaltbar),
+  gesperrt, und der Buzzer geht für die übrigen wieder auf.
+- Uhren für Vorlesezeit, Buzzer, Antwort und Wertung – alle einstellbar
+
+### 🖥 Brett auf dem Fernseher, Buzzer auf den Handys
+
+Das ist der eigentliche Modus. Ein zusätzliches Gerät (Fernseher, Laptop,
+Tablet) tritt mit demselben Raum-Code bei, während das Spiel schon läuft, und
+wird damit **Zuschauer**: Es zeigt Brett, Frage und Punktestände groß. Die
+Spieler haben auf dem Handy einen bildschirmfüllenden Buzzer – und sonst fast
+nichts. Wer am Zug ist, bekommt statt dessen das Brett zum Auswählen.
+
+Spieler auf einem großen Bildschirm können mit 🖥 / 📱 zwischen beiden
+Ansichten umschalten.
+
+### Das Buzzer-Rennen
+
+„Erste Nachricht gewinnt" bestraft nur das schlechtere WLAN: Der Jitter
+zwischen zwei Handys im Heimnetz ist regelmäßig größer als der Unterschied
+menschlicher Reaktionszeiten. Deshalb:
+
+1. Der erste eintreffende Buzz eröffnet ein Fenster von **150 ms**.
+2. Entschieden wird danach nach der **Reaktionszeit** – der Zeit von
+   „Buzzer sichtbar offen" bis zum Tastendruck, die jedes Gerät für sich
+   misst. Damit fällt die Laufzeit in beide Richtungen heraus, ganz ohne
+   Uhrenabgleich.
+3. Der Server deckelt die gemeldete Zeit nach unten auf 120 ms (schneller
+   reagiert kein Mensch) und nach oben auf die selbst gemessene Spanne.
+
+Ehrlich dazu: Gegen jemanden, der seinen Client umbaut, hilft das nicht, und
+ein Wettkampf-Buzzer ist es nicht. Für einen Spieleabend reicht es.
+
+### Am gemeinsamen Gerät
+
+Gleichzeitig buzzern geht auf einem Tablet nicht. Stattdessen wie am echten
+Spieltisch: Die Frage erscheint, alle rufen – und wer vorgelesen hat, tippt
+auf den **Namen** dessen, der zuerst dran war. Gewertet wird mit einem Tipp,
+und es läuft keine Uhr mit. Feste Sitzplätze gibt es hier bewusst nicht: Alle
+lesen dieselbe Frage, und sie zu einem Einzelnen zu drehen machte sie für die
+anderen unlesbar.
+
+### Bewusst noch nicht drin
+
+**Double Jeopardy** (zweite Runde mit doppelten Werten) und **Final Jeopardy**
+(verdeckte Einsätze) fehlen. Wetten heißen eine weitere Redaktionsschicht pro
+Empfänger; die Grundrunde ist für sich ein vollständiges Spiel.
 
 ---
 
@@ -267,6 +334,7 @@ shared/            Engines & Typen (laufen auf Server UND Client)
   registry.ts        Vertrag jedes Spiels gegenüber der Plattform + GAME_MODULES
   monopoly/module.ts Monopoly als Plattform-Modul (dünner Adapter)
   poker/module.ts    Poker als Plattform-Modul (dünner Adapter)
+  jeopardy/module.ts Jeopardy als Plattform-Modul (dünner Adapter)
   trivia/types.ts    Fragenformat für Jeopardy & Trivial Pursuit + Validierung
   trivia/ask.ts      Fragen ziehen, Antworten prüfen, Ablenker bilden
   trivia/packs/      Mitgeliefertes deutsches Paket (300 Fragen)
@@ -281,17 +349,23 @@ shared/            Engines & Typen (laufen auf Server UND Client)
     hands.ts         Hand-Bewertung (beste 5 aus 7, Kicker, deutsche Namen)
     engine.ts        Setzrunden, Side-Pots, Blinds, Timeouts, viewFor()-Redaction
     rules.ts         Poker-Raumoptionen & Grenzen
+  jeopardy/
+    types.ts         Jeopardy-Typen: JeopardyState, Brett, laufende Frage, Aktionen
+    engine.ts        Brett, Buzzer-Rennen, freie Antwort, Wertung, Punkte
+    rules.ts         Jeopardy-Raumoptionen, Gnadenfenster, Reaktionszeit-Grenzen
 
 server/            Node.js + Express + Socket.io
   index.ts           HTTP-Server, liefert client/dist aus (BASE_PATH-fähig)
   rooms.ts           Plattform: Räume (je 1 Spiel), Spieler/Zuschauer, Lobby-Chat,
-                     öffentliche Raumliste, Poker-Timer, redigierte Broadcasts
-  store.ts           Persistenz: eigene Editionen & Spielstände (./data, JSON)
+                     öffentliche Raumliste, Raum-Timer, redigierte Broadcasts
+  store.ts           Persistenz: Editionen, Spielstände & Fragenpakete (./data, JSON)
 
 client/            React 18 + TypeScript + Vite + zustand
   pages/             Home (Lobby), Room (Wartezimmer), JoinRoom (Link-Beitritt)
   games/monopoly/    Board, GameTable, Panels, Dialoge, AdminPanel
   games/poker/       PokerTable (Tisch, Sitze, Action-Bar), PlayingCard
+  games/jeopardy/    JeopardyTable (Brett-/Handy-Ansicht), Board, Clue
+  games/trivia/      PackEditor (Fragenpakete anlegen und bearbeiten)
   components/        Chat, Modal, Toasts (spielübergreifend)
   hooks/             useHashRoute (teilbare #/room/CODE-Links)
   net/index.ts       Transport-Router: leitet je nach Modus um
@@ -302,12 +376,15 @@ client/            React 18 + TypeScript + Vite + zustand
   state/store.ts     zentraler App-State (RoomEnvelope vom Server)
 
 tests/
-  engine.test.ts     19 Unit-Tests Monopoly-Regeln (node:test)
-  poker.test.ts      19 Unit-Tests Poker (Rankings, Side-Pots, Blinds, Timeouts)
-  e2e.ts             Browser-E2E Monopoly: 2 Spieler, Link-Beitritt, echtes Spiel
-  e2e-poker.ts       Browser-E2E Poker: Showdown, Raise/Fold, Redaction, Zuschauer
-  local-room.test.ts 17 Unit-Tests lokaler Raum: Sitzrotation, Klon-Vertrag, Redaction
-  e2e-local.ts       Browser-E2E Pass & Play – mit abgeschaltetem Netz
+  engine.test.ts      30 Unit-Tests Monopoly-Regeln inkl. Auktionen (node:test)
+  poker.test.ts       19 Unit-Tests Poker (Rankings, Side-Pots, Blinds, Timeouts)
+  local-room.test.ts  27 Unit-Tests lokaler Raum: Sitzrotation, Klon-Vertrag, Redaction
+  trivia.test.ts      16 Unit-Tests Fragenformat, Ablenker, mitgeliefertes Paket
+  jeopardy.test.ts    28 Unit-Tests Jeopardy: Buzzer-Rennen, Sperre, Wertung, Redaktion
+  e2e.ts              Browser-E2E Monopoly: 2 Spieler, Link-Beitritt, echtes Spiel
+  e2e-poker.ts        Browser-E2E Poker: Showdown, Raise/Fold, Redaction, Zuschauer
+  e2e-local.ts        Browser-E2E Pass & Play – mit abgeschaltetem Netz
+  e2e-jeopardy.ts     Browser-E2E Jeopardy: Fernseher + zwei Handys, dazu lokal
 ```
 
 **Designentscheidungen**
@@ -326,7 +403,13 @@ tests/
   (`GAME_MODULES` in `shared/registry.ts`) und die Oberfläche (`CLIENT_GAMES`
   in `client/src/games/registry.tsx`). Vorher waren es rund siebzig
   `game ? … : poker ? …`-Ketten, an denen ein drittes Spiel stumm
-  durchgefallen wäre.
+  durchgefallen wäre. Jeopardy war die Probe aufs Exempel: Der Compiler hat
+  jede fehlende Stelle benannt, statt es stumm als Poker zu rendern.
+- **Inhalt liegt nicht im Zustand, wenn er geheim sein soll**: Monopoly bettet
+  seine Edition ein, damit Spielstände autark sind. Jeopardy tut das mit dem
+  Fragenpaket bewusst NICHT – es hat keine Spielstände, und die Antworten
+  lägen sonst in den Entwicklerwerkzeugen jedes Clients offen. Gespeichert ist
+  nur die Paket-ID; jede Frage wird zur Laufzeit über `GameDeps` nachgeschlagen.
 - **Nickname statt Accounts**: bewusst ohne Registrierung/E-Mail – der Name
   wird lokal gespeichert. Accounts, Freundeslisten, Achievements und weitere
   Spiele (Kniffel, Rommé …) sind auf der Roadmap.

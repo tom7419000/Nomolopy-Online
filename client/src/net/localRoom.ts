@@ -21,6 +21,7 @@ import { getGameInfo, type AnyGameState, type GameId, type RoomEnvelope, type Ro
 import { moduleFor, type GameDeps } from '@shared/registry';
 import type { ActionResult, BoardEdition } from '@shared/types';
 import type { PokerRules } from '@shared/poker/types';
+import type { JeopardyRules } from '@shared/jeopardy/types';
 
 /** Tischkante, an der ein Spieler sitzt – als Drehwinkel der Ansicht. */
 export type SeatEdge = 0 | 90 | 180 | 270;
@@ -76,7 +77,15 @@ export interface LocalRoom {
   seating: LocalSeating | null;
 }
 
-export interface LocalRoomOptions {
+/** Inhalte, die nicht Teil des Spielzustands sind (Editionen, Fragenpakete). */
+export interface LocalContent {
+  /** Eigene Editionen aus dem Admin-Bereich, falls vorhanden. */
+  editions?: BoardEdition[];
+  /** Eigene Fragenpakete aus dem Browser-Speicher. */
+  packs?: TriviaPack[];
+}
+
+export interface LocalRoomOptions extends LocalContent {
   gameId: GameId;
   /** Namen in Sitzreihenfolge – das ist zugleich die Zugreihenfolge. */
   players: string[];
@@ -84,14 +93,11 @@ export interface LocalRoomOptions {
   editionId?: string;
   presetId?: string;
   pokerRules?: Partial<PokerRules>;
-  /** Eigene Editionen aus dem Admin-Bereich, falls vorhanden. */
-  editions?: BoardEdition[];
+  jeopardyRules?: Partial<JeopardyRules>;
   /** Feste Plätze statt Weiterreichen (siehe `LocalSeating`). */
   seatMode?: LocalSeating['mode'];
   /** Kante je Sitz, in derselben Reihenfolge wie `players`. */
   seatEdges?: SeatEdge[];
-  /** Eigene Fragenpakete aus dem Browser-Speicher. */
-  packs?: TriviaPack[];
 }
 
 export interface LocalRoomHooks {
@@ -106,6 +112,26 @@ const err = (error: string): ActionResult => ({ ok: false, error });
 // ---------------------------------------------------------------------------
 // Aufbau
 // ---------------------------------------------------------------------------
+
+/**
+ * Die Inhalte, auf die die Spiele zur Laufzeit zugreifen.
+ *
+ * Wird an zwei Stellen gebraucht: beim Anlegen einer Partie und bei jeder
+ * Aktion (Jeopardy schlägt seine Fragen hier nach, statt sie in den Zustand
+ * einzubetten). Deshalb eine Funktion und kein Nebenprodukt von
+ * `createLocalRoom` – nach einem Reload gibt es kein Setup mehr, aus dem sie
+ * fallen könnte.
+ */
+export function localDeps(content: LocalContent = {}): GameDeps {
+  return {
+    // Lokal gibt es nur die eingebauten Editionen – der Katalog kommt sonst
+    // vom Server, und der ist hier bewusst nicht im Spiel.
+    editions: () => (content.editions?.length ? content.editions : BUILT_IN_EDITIONS),
+    preset: (id) => getPreset(id) as unknown as { id: string; rules: Record<string, unknown> },
+    // Lokal: eingebaute Pakete plus die, die im Browser gespeichert wurden.
+    packs: () => (content.packs?.length ? content.packs : BUILT_IN_PACKS),
+  };
+}
 
 export function createLocalRoom(opts: LocalRoomOptions): LocalRoom {
   const names = opts.players.map((n) => n.trim()).filter(Boolean);
@@ -122,18 +148,16 @@ export function createLocalRoom(opts: LocalRoomOptions): LocalRoom {
   };
 
   const m = moduleFor(opts.gameId);
-  const deps: GameDeps = {
-    // Lokal gibt es nur die eingebauten Editionen – der Katalog kommt sonst
-    // vom Server, und der ist hier bewusst nicht im Spiel.
-    editions: () => (opts.editions?.length ? opts.editions : BUILT_IN_EDITIONS),
-    preset: (id) => getPreset(id) as unknown as { id: string; rules: Record<string, unknown> },
-    // Lokal: eingebaute Pakete plus die, die im Browser gespeichert wurden.
-    packs: () => (opts.packs?.length ? opts.packs : BUILT_IN_PACKS),
-  };
+  const deps = localDeps(opts);
 
   const state = m.create(
     code,
-    { editionId: opts.editionId, presetId: opts.presetId, poker: opts.pokerRules },
+    {
+      editionId: opts.editionId,
+      presetId: opts.presetId,
+      poker: opts.pokerRules,
+      jeopardy: opts.jeopardyRules,
+    },
     deps,
     Date.now()
   );
@@ -236,12 +260,16 @@ export function buildEnvelope(room: LocalRoom): {
 export class LocalRoomRunner {
   readonly room: LocalRoom;
   private readonly hooks: LocalRoomHooks;
+  private readonly deps: GameDeps;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private stopped = false;
 
-  constructor(room: LocalRoom, hooks: LocalRoomHooks) {
+  constructor(room: LocalRoom, hooks: LocalRoomHooks, content: LocalContent = {}) {
     this.room = room;
     this.hooks = hooks;
+    // Nach einem Reload gibt es kein Setup mehr – die Inhalte kommen dann aus
+    // dem Browser-Speicher und werden hier neu zusammengesetzt.
+    this.deps = localDeps(content);
   }
 
   private now(): number {
@@ -278,7 +306,7 @@ export class LocalRoomRunner {
     this.timer = setTimeout(() => {
       this.timer = null;
       if (this.stopped) return;
-      if (m.tick(this.room.state, this.now())) this.publish();
+      if (m.tick(this.room.state, this.deps, this.now())) this.publish();
       else this.scheduleTick();
     }, Math.max(50, at - this.now()));
     // Im Node-Testlauf darf der Timer den Prozess nicht offen halten.
@@ -297,15 +325,24 @@ export class LocalRoomRunner {
   // -- Aktionen ------------------------------------------------------------
 
   start(): ActionResult {
-    const r = moduleFor(this.room.meta.gameId).start(this.room.state, this.now());
+    const r = moduleFor(this.room.meta.gameId).start(this.room.state, this.deps, this.now());
     if (r.ok) this.publish();
     return r;
   }
 
-  action(action: unknown): ActionResult {
-    const seat = actingSeatId(this.room);
+  /**
+   * Aktion an die Engine geben.
+   *
+   * `seatId` ist der Ausweg für Aktionen, die NICHT der gerade aktive Sitz
+   * auslöst: Jeopardys Buzzer („wer war zuerst?") und die Wertung durch die
+   * Mitspieler. Am gemeinsamen Gerät gibt es keine Identität zu umgehen – wer
+   * das Tablet hält, handelt ohnehin für alle. Online existiert dieser Weg
+   * deshalb bewusst nicht: dort kommt die Identität aus dem Socket.
+   */
+  action(action: unknown, seatId?: string): ActionResult {
+    const seat = seatId ?? actingSeatId(this.room);
     if (!seat) return err('Kein aktiver Spieler.');
-    const r = moduleFor(this.room.meta.gameId).apply(this.room.state, seat, action, this.now());
+    const r = moduleFor(this.room.meta.gameId).apply(this.room.state, seat, action, this.deps, this.now());
     if (r.ok) this.publish();
     return r;
   }
@@ -331,7 +368,7 @@ export class LocalRoomRunner {
       maxPlayers: this.room.meta.maxPlayers,
       onSeated: () => {},
     });
-    const r = m.start(this.room.state, this.now());
+    const r = m.start(this.room.state, this.deps, this.now());
     if (r.ok) this.publish();
     return r;
   }

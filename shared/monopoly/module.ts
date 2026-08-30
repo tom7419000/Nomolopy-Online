@@ -14,6 +14,7 @@ import {
   auctionTick,
   createGame,
   getPlayer,
+  log,
   nextDeadline,
   removeLobbyPlayer,
   rerollAppearance,
@@ -68,6 +69,7 @@ export const monopolyModule: GameModule<'monopoly'> = {
       isHost: p.isHost,
       connected: p.connected,
       eliminated: p.bankrupt,
+      avatar: p.token,
     }));
   },
 
@@ -99,6 +101,7 @@ export const monopolyModule: GameModule<'monopoly'> = {
       isHost: true,
       connected: next.connected,
       eliminated: next.bankrupt,
+      avatar: next.token,
     };
   },
 
@@ -108,6 +111,14 @@ export const monopolyModule: GameModule<'monopoly'> = {
 
   chat(s, author, text) {
     return addChat(s, author.id, text);
+  },
+
+  messages(s) {
+    return s.chat;
+  },
+
+  systemLog(s, text, playerId) {
+    log(s, 'system', text, playerId);
   },
 
   configure(s, patch, deps) {
@@ -146,7 +157,7 @@ export const monopolyModule: GameModule<'monopoly'> = {
     return nextDeadline(s);
   },
 
-  tick(s, now) {
+  tick(s, _deps, now) {
     return auctionTick(s, now);
   },
 
@@ -160,6 +171,7 @@ export const monopolyModule: GameModule<'monopoly'> = {
     spectators: false,
     saveLoad: true,
     rejoinByName: true,
+    rotatesToActor: true,
   },
 };
 

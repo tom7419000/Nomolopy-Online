@@ -8,8 +8,11 @@
 
 import { RULE_FIELDS } from '@shared/rules';
 import { POKER_LIMITS } from '@shared/poker/rules';
+import { JEOPARDY_LIMITS } from '@shared/jeopardy/rules';
+import { checkPack } from '@shared/trivia/types';
 import type { RuleSet } from '@shared/types';
 import type { PokerRules } from '@shared/poker/types';
+import type { JeopardyRules } from '@shared/jeopardy/types';
 import { api } from '../net';
 import { useStore } from '../state/store';
 
@@ -154,3 +157,95 @@ export function PokerSettings({ isHost }: { isHost: boolean }) {
   );
 }
 
+
+export function JeopardySettings({ isHost }: { isHost: boolean }) {
+  const view = useStore((s) => s.jeopardy)!;
+  const packs = useStore((s) => s.packs);
+  const openDialog = useStore((s) => s.openDialog);
+  const rules = view.rules;
+
+  function set<K extends keyof JeopardyRules>(key: K, value: JeopardyRules[K]) {
+    api.configureLobby({ jeopardy: { [key]: value } });
+  }
+
+  const pack = packs.find((p) => p.id === rules.packId);
+  const report = pack ? checkPack(pack) : null;
+
+  const numberRow = (
+    label: string,
+    key: 'baseValue' | 'readSeconds' | 'buzzSeconds' | 'answerSeconds' | 'judgeSeconds'
+  ) => (
+    <label className="rule-row number">
+      <span>{label}</span>
+      <input
+        type="number"
+        className="input small"
+        disabled={!isHost}
+        min={JEOPARDY_LIMITS[key].min}
+        max={JEOPARDY_LIMITS[key].max}
+        step={JEOPARDY_LIMITS[key].step}
+        value={rules[key]}
+        onChange={(e) => set(key, Number(e.target.value))}
+      />
+    </label>
+  );
+
+  return (
+    <>
+      <label className="field">
+        <span>Fragenpaket</span>
+        <select
+          className="input"
+          disabled={!isHost}
+          value={rules.packId}
+          onChange={(e) => set('packId', e.target.value)}
+        >
+          {packs.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+              {p.builtIn ? '' : ' (eigenes)'}
+            </option>
+          ))}
+        </select>
+      </label>
+      {report && (
+        <p className="hint">
+          {report.total} Fragen
+          {report.ok
+            ? ' · alle 30 Fächer gefüllt'
+            : ` · ⚠️ ${report.thin.length} Fächer zu dünn – damit lässt sich nicht starten`}
+        </p>
+      )}
+
+      <div className="rules-list">
+        {numberRow('Punkte für die erste Zeile', 'baseValue')}
+        {numberRow('Vorlesezeit vor dem Buzzer (Sek.)', 'readSeconds')}
+        {numberRow('Buzzer offen für … Sek.', 'buzzSeconds')}
+        {numberRow('Bedenkzeit zum Antworten (Sek.)', 'answerSeconds')}
+        {numberRow('Zeit zum Werten (Sek.)', 'judgeSeconds')}
+        <label className="rule-row boolean">
+          <span>Falsche Antwort kostet Punkte</span>
+          <input
+            type="checkbox"
+            disabled={!isHost}
+            checked={rules.penalty}
+            onChange={(e) => set('penalty', e.target.checked)}
+          />
+        </label>
+      </div>
+
+      <p className="hint">
+        🖥 Ein weiteres Gerät kann mit demselben Code beitreten und zeigt dann das
+        Brett groß – die Spieler buzzern mit dem Handy.
+      </p>
+
+      {isHost && (
+        <div className="lobby-actions">
+          <button className="btn ghost" onClick={() => openDialog({ type: 'packs' })}>
+            ✏️ Fragen bearbeiten
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
