@@ -9,6 +9,7 @@ import { io } from 'socket.io-client';
 import type { GameId, RoomEnvelope } from '@shared/games';
 import type { PokerRules } from '@shared/poker/types';
 import type { JeopardyRules } from '@shared/jeopardy/types';
+import type { PursuitRules } from '@shared/pursuit/types';
 import { useStore, loadSession, saveSession, clearSession } from '../state/store';
 import { isLocal } from './mode';
 
@@ -144,6 +145,7 @@ export interface CreateRoomOptions {
   presetId?: string;
   pokerRules?: Partial<PokerRules>;
   jeopardyRules?: Partial<JeopardyRules>;
+  pursuitRules?: Partial<PursuitRules>;
 }
 
 export const socketApi = {
@@ -202,6 +204,7 @@ export const socketApi = {
     rules?: Record<string, unknown>;
     poker?: Partial<PokerRules>;
     jeopardy?: Partial<JeopardyRules>;
+    pursuit?: Partial<PursuitRules>;
   }) {
     return withErrorToast(call('lobby:configure', payload));
   },

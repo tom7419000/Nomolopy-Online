@@ -13,6 +13,8 @@ import { POKER_LIMITS } from '@shared/poker/rules';
 import type { PokerRules } from '@shared/poker/types';
 import { JEOPARDY_LIMITS } from '@shared/jeopardy/rules';
 import type { JeopardyRules } from '@shared/jeopardy/types';
+import { PURSUIT_LIMITS } from '@shared/pursuit/rules';
+import type { PursuitRules } from '@shared/pursuit/types';
 import { checkPack } from '@shared/trivia/types';
 import { useStore } from '../state/store';
 import type { CreateFieldsProps } from '../games/registry';
@@ -232,6 +234,89 @@ export function JeopardyCreateFields({ jeopardy, setJeopardy, local }: CreateFie
           🖥 Tipp: Ein weiteres Gerät (Fernseher, Laptop) kann mit demselben Code
           beitreten und zeigt dann das Brett groß, während alle mit dem Handy
           buzzern.
+        </p>
+      )}
+    </>
+  );
+}
+
+export function PursuitCreateFields({ pursuit, setPursuit, local }: CreateFieldsProps) {
+  const rules = pursuit as unknown as PursuitRules;
+  const set = (patch: Partial<PursuitRules>) =>
+    setPursuit({ ...rules, ...patch } as unknown as Record<string, unknown>);
+
+  const packs = useStore((s) => s.packs);
+  const pack = packs.find((p) => p.id === rules.packId) ?? packs[0];
+  const report = pack ? checkPack(pack) : null;
+
+  return (
+    <>
+      <label className="field">
+        <span>Fragenpaket</span>
+        <select className="input" value={pack?.id ?? ''} onChange={(e) => set({ packId: e.target.value })}>
+          {packs.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+              {p.builtIn ? '' : ' (eigenes)'}
+            </option>
+          ))}
+        </select>
+      </label>
+      {pack && (
+        <p className="hint">
+          {report?.total ?? 0} Fragen
+          {report && !report.ok && ' · ⚠️ zu wenige verschiedene Antworten für Multiple Choice'}
+        </p>
+      )}
+
+      <div className="field-row">
+        <label className="field">
+          <span>Käsestücke zum Sieg</span>
+          <input
+            type="number"
+            className="input small"
+            min={PURSUIT_LIMITS.wedgesToWin.min}
+            max={PURSUIT_LIMITS.wedgesToWin.max}
+            value={rules.wedgesToWin}
+            onChange={(e) => set({ wedgesToWin: Number(e.target.value) })}
+          />
+        </label>
+        <label className="field">
+          <span>Schwierigkeit</span>
+          <select
+            className="input"
+            value={rules.level}
+            onChange={(e) => set({ level: Number(e.target.value) as PursuitRules['level'] })}
+          >
+            <option value={0}>gemischt</option>
+            {[1, 2, 3, 4, 5].map((l) => (
+              <option key={l} value={l}>
+                Stufe {l}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <label className="rule-row boolean">
+        <span>Frei antworten statt ankreuzen</span>
+        <input type="checkbox" checked={rules.freeText} onChange={(e) => set({ freeText: e.target.checked })} />
+      </label>
+      <p className="hint">
+        {rules.freeText
+          ? 'Wie bei Jeopardy: die Mitspieler werten, mit vorausgewähltem Vorschlag. Authentischer, aber jede Frage kostet eine Runde mehr.'
+          : 'Vier Möglichkeiten je Frage. Über eine ganze Partie hält das das Tempo – deshalb die Vorgabe.'}
+      </p>
+
+      {local ? (
+        <p className="hint">
+          🪑 Das Rad dreht sich zu dem, der am Zug ist. Die Frage steht in der
+          Seitenspalte und bleibt aufrecht.
+        </p>
+      ) : (
+        <p className="hint">
+          🖥 Ein weiteres Gerät kann mit demselben Code beitreten und zeigt dann das
+          Rad groß – gewürfelt und geantwortet wird am Handy.
         </p>
       )}
     </>

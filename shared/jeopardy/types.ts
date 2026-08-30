@@ -77,7 +77,8 @@ export interface JeopardyClue {
   row: number;
   value: number;
   category: TriviaCategory;
-  questionId: string;
+  /** GEHEIM bis zur Auflösung – siehe `jeopardyView`. */
+  questionId: string | null;
   prompt: string;
   /** GEHEIM – erst bei `step === 'revealed'` gefüllt. */
   answer: string | null;

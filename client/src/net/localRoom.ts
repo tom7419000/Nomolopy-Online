@@ -22,6 +22,7 @@ import { moduleFor, type GameDeps } from '@shared/registry';
 import type { ActionResult, BoardEdition } from '@shared/types';
 import type { PokerRules } from '@shared/poker/types';
 import type { JeopardyRules } from '@shared/jeopardy/types';
+import type { PursuitRules } from '@shared/pursuit/types';
 
 /** Tischkante, an der ein Spieler sitzt – als Drehwinkel der Ansicht. */
 export type SeatEdge = 0 | 90 | 180 | 270;
@@ -94,6 +95,7 @@ export interface LocalRoomOptions extends LocalContent {
   presetId?: string;
   pokerRules?: Partial<PokerRules>;
   jeopardyRules?: Partial<JeopardyRules>;
+  pursuitRules?: Partial<PursuitRules>;
   /** Feste Plätze statt Weiterreichen (siehe `LocalSeating`). */
   seatMode?: LocalSeating['mode'];
   /** Kante je Sitz, in derselben Reihenfolge wie `players`. */
@@ -157,6 +159,7 @@ export function createLocalRoom(opts: LocalRoomOptions): LocalRoom {
       presetId: opts.presetId,
       poker: opts.pokerRules,
       jeopardy: opts.jeopardyRules,
+      pursuit: opts.pursuitRules,
     },
     deps,
     Date.now()

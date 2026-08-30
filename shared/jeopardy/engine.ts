@@ -616,8 +616,8 @@ function finish(state: JeopardyState): void {
   );
 }
 
-function findQuestion(pack: TriviaPack | null, id: string): TriviaQuestion | undefined {
-  return pack?.questions.find((q) => q.id === id);
+function findQuestion(pack: TriviaPack | null, id: string | null): TriviaQuestion | undefined {
+  return id ? pack?.questions.find((q) => q.id === id) : undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -697,10 +697,16 @@ export function localAdjustJeopardy(state: JeopardyState, now: number): void {
  * Empfänger. Erst Final Jeopardy mit seinen verdeckten Einsätzen bräuchte
  * den teuren Pfad; dann wird hier `viewerId` ausgewertet und das Flag
  * umgelegt.
+ *
+ * Geschwärzt wird auch die `questionId`. Der Client hat die Fragenpakete
+ * gebündelt dabei – wer die Kennung sieht, schlägt die Antwort in einer Zeile
+ * in den Entwicklerwerkzeugen nach. Die Antwort zu verbergen und den
+ * Schlüssel dazu mitzuschicken wäre Theater. Gebraucht wird sie im Client
+ * ohnehin nicht.
  */
 export function jeopardyView(state: JeopardyState): JeopardyState {
   if (!state.clue || state.clue.step === 'revealed') return state;
-  return { ...state, clue: { ...state.clue, answer: null } };
+  return { ...state, clue: { ...state.clue, answer: null, questionId: null } };
 }
 
 // ---------------------------------------------------------------------------

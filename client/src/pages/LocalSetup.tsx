@@ -12,7 +12,9 @@ import { BUILT_IN_EDITIONS } from '@shared/boards';
 import { DEFAULT_POKER_RULES } from '@shared/poker/rules';
 import type { PokerRules } from '@shared/poker/types';
 import { DEFAULT_JEOPARDY_RULES } from '@shared/jeopardy/rules';
+import { DEFAULT_PURSUIT_RULES } from '@shared/pursuit/rules';
 import type { JeopardyRules } from '@shared/jeopardy/types';
+import type { PursuitRules } from '@shared/pursuit/types';
 import { PLAYER_COLORS } from '@shared/util';
 import { startLocalGame } from '../net';
 import {
@@ -42,6 +44,7 @@ export function LocalSetup({ gameId, onClose }: { gameId: GameId; onClose: () =>
     blindIncreaseMinutes: 0,
   });
   const [jeopardy, setJeopardy] = useState<JeopardyRules>({ ...DEFAULT_JEOPARDY_RULES });
+  const [pursuit, setPursuit] = useState<PursuitRules>({ ...DEFAULT_PURSUIT_RULES });
 
   // Mehr Spieler als Kanten: „feste Plätze" fällt dann automatisch weg.
   // Bewusst abgeleitet statt per setState im Render – das gäbe eine
@@ -98,6 +101,7 @@ export function LocalSetup({ gameId, onClose }: { gameId: GameId; onClose: () =>
       presetId,
       pokerRules: gameId === 'poker' ? poker : undefined,
       jeopardyRules: gameId === 'jeopardy' ? jeopardy : undefined,
+      pursuitRules: gameId === 'pursuit' ? pursuit : undefined,
       seatMode: canRotate ? effectiveSeatMode : 'pass',
       seatEdges:
         canRotate && effectiveSeatMode === 'fixed' ? cleaned.map((_, i) => edgeOf(i)) : undefined,
@@ -212,6 +216,8 @@ export function LocalSetup({ gameId, onClose }: { gameId: GameId; onClose: () =>
         setPoker={(v) => setPoker(v as unknown as PokerRules)}
         jeopardy={jeopardy as unknown as Record<string, unknown>}
         setJeopardy={(v) => setJeopardy(v as unknown as JeopardyRules)}
+        pursuit={pursuit as unknown as Record<string, unknown>}
+        setPursuit={(v) => setPursuit(v as unknown as PursuitRules)}
         local
       />
 

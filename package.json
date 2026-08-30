@@ -14,14 +14,15 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.server.json",
     "start": "tsx server/index.ts",
-    "test": "tsx --test tests/engine.test.ts tests/poker.test.ts tests/local-room.test.ts tests/trivia.test.ts tests/jeopardy.test.ts",
+    "test": "tsx --test tests/engine.test.ts tests/poker.test.ts tests/local-room.test.ts tests/trivia.test.ts tests/jeopardy.test.ts tests/pursuit.test.ts",
     "test:e2e": "tsx tests/e2e.ts",
     "test:e2e:poker": "tsx tests/e2e-poker.ts",
     "test:e2e:pwa": "tsx tests/e2e-pwa.ts",
     "icons": "tsx scripts/generate-icons.ts",
     "update": "bash scripts/update.sh",
     "test:e2e:local": "tsx tests/e2e-local.ts",
-    "test:e2e:jeopardy": "tsx tests/e2e-jeopardy.ts"
+    "test:e2e:jeopardy": "tsx tests/e2e-jeopardy.ts",
+    "test:e2e:pursuit": "tsx tests/e2e-pursuit.ts"
   },
   "dependencies": {
     "better-sqlite3": "^11.10.0",

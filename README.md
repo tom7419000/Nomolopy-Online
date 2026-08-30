@@ -1,13 +1,14 @@
 # 🎮 PlayHub – Spieleabend online
 
 Eine Gaming-Plattform mit **Echtzeit-Multiplayer**, auf der du mit Freunden in
-privaten oder öffentlichen Räumen spielst – aktuell mit drei Spielen:
+privaten oder öffentlichen Räumen spielst – aktuell mit vier Spielen:
 
 | | Spiel | Spieler | Besonderheiten |
 |---|---|---|---|
 | 🎲 | **Monopoly** | 2–8 | Originalregeln inkl. Auktionen, eigene Editionen (Berlin, München, USA …), Spielstände |
 | 🃏 | **Texas Hold'em Poker** | 2–9 | No-Limit, steigende Blinds, Side-Pots, Auto-Fold-Timer, Zuschauer-Modus |
 | 🎯 | **Jeopardy** | 2–8 | 300 deutsche Fragen, Brett auf dem Fernseher + Buzzer auf den Handys |
+| 🧀 | **Trivial Pursuit** | 2–6 | Volles Rad mit 73 Feldern, Käsestücke, Schlussfrage in der Mitte |
 
 React + TypeScript im Frontend, Node.js + Socket.io als serverautoritatives
 Backend, eine gemeinsame Engine pro Spiel für Regeln und Validierung.
@@ -38,16 +39,17 @@ LAN einfach `http://<deine-IP>:3001` an die Mitspieler geben. Port per `PORT`,
 Datenverzeichnis (Editionen/Spielstände) per `DATA_DIR` konfigurierbar.
 
 ```bash
-npm test                                    # Unit-Tests: Monopoly, Poker, lokaler Raum, Trivia, Jeopardy (120 Tests)
+npm test                                    # Unit-Tests aller Spiele und des lokalen Raums (166 Tests)
 npm run typecheck
 npm run build && npm run test:e2e           # Browser-E2E: Monopoly inkl. Auktion (Playwright)
 npm run build && npm run test:e2e:poker     # Browser-E2E: Poker inkl. Karten-Redaction
 npm run build && npm run test:e2e:pwa       # Browser-E2E: Manifest, Service Worker, Offline
 npm run build && npm run test:e2e:local     # Browser-E2E: Pass & Play mit abgeschaltetem Netz
 npm run build && npm run test:e2e:jeopardy  # Browser-E2E: Fernseher + zwei Handys, lokal
+npm run build && npm run test:e2e:pursuit   # Browser-E2E: Rad, Käsestück, Freitext am Tablet
 ```
 
-> Die E2E-Tests starten je einen eigenen Server (Ports 4096–4099) und räumen
+> Die E2E-Tests starten je einen eigenen Server (Ports 4095–4099) und räumen
 > ihn über die Prozessgruppe wieder ab. Bleibt nach einem harten Abbruch doch
 > einmal etwas stehen: `pkill -f "server/index.ts"`.
 
@@ -58,7 +60,7 @@ npm run build && npm run test:e2e:jeopardy  # Browser-E2E: Fernseher + zwei Hand
 Neben dem Online-Modus lässt sich **an einem einzigen Gerät** spielen: Tablet
 in die Tischmitte, alle sitzen drumherum, das Gerät wandert reihum. Auf der
 Startseite beim gewünschten Spiel auf **„📱 Am Gerät spielen"** tippen,
-Namen eintragen, los. Alle drei Spiele können das.
+Namen eintragen, los. Alle vier Spiele können das.
 
 - **Kein Server, kein Netz.** Die Spiel-Engine läuft im Browser. Der Modus
   funktioniert im Flugmodus, im Zug und im Garten – die Verbindung wird für
@@ -218,7 +220,7 @@ das Skript nicht.
   Mitspieler einfach mit ihrem alten Namen wieder bei
 - **Debug-Modus** (Lobby-Option): nächsten Würfelwurf setzen – für Tests
 
-### 📚 Fragenpakete (Jeopardy, später Trivial Pursuit)
+### 📚 Fragenpakete (Jeopardy & Trivial Pursuit)
 
 Über die Fußzeile der Startseite erreichbar. Ein Paket besteht aus sechs
 Kategorien (die klassischen Trivial-Pursuit-Farben) × fünf Schwierigkeits-
@@ -227,9 +229,11 @@ anlegen, als JSON aus- und wieder einlesen und – auch offline – im Browser
 speichern.
 
 Das Abdeckungsraster im Editor ist zugleich die Jeopardy-Brettvorschau: Ein
-Paket ist bespielbar, wenn **jedes** Fach mindestens vier Fragen hat. Weniger
-geht nicht, weil Trivial Pursuit seine falschen Antwortmöglichkeiten aus den
-übrigen Antworten desselben Fachs zieht – ohne sie extra schreiben zu müssen.
+Paket ist bespielbar, wenn **jedes** Fach mindestens vier **verschiedene
+Antworten** hat. Nicht vier Fragen – zwei Fragen mit derselben Lösung liefern
+nur einen Ablenker, und Trivial Pursuit zieht seine falschen
+Antwortmöglichkeiten aus den übrigen Antworten desselben Fachs. Wo beides
+auseinanderfällt, zeigt das Raster beide Zahlen.
 
 ---
 
@@ -293,6 +297,67 @@ Empfänger; die Grundrunde ist für sich ein vollständiges Spiel.
 
 ---
 
+## 🧀 Trivial Pursuit
+
+- **2–6 Spieler**, volles Rad: **42 Felder im Ring**, sechs Speichen zu je fünf
+  Feldern, eine Nabe = **73 Felder**
+- **Ein Würfel.** Gewürfelt wird, dann sucht man sich unter den erreichbaren
+  Feldern eines aus – an Abzweigungen entscheidest du, nur umdrehen ist mitten
+  im Zug verboten
+- **Richtig geantwortet heißt: nochmal würfeln.** Falsch: der Nächste ist dran
+- Auf einer **Käse-Ecke** bringt eine richtige Antwort das Käsestück dieser
+  Farbe (jede Farbe nur einmal)
+- Wer alle Käsestücke hat, muss die **Mitte exakt treffen**; dann bestimmen die
+  Mitspieler per Abstimmung die Farbe der Schlussfrage. Richtig = gewonnen,
+  falsch = weiterspielen und erneut versuchen
+- **Ankreuzen oder frei antworten**: Vorgabe sind vier Möglichkeiten je Frage –
+  bei einer Frage pro Feld und 45 bis 90 Minuten hält das das Tempo. Ein
+  Regelschalter stellt auf Freitext um; dann werten die Mitspieler wie bei
+  Jeopardy, mit vorausgewähltem Vorschlag.
+- Einstellbar: Fragenpaket, **Käsestücke zum Sieg** (3–6, für kürzere Partien),
+  Schwierigkeit, Bedenkzeiten
+
+### Das Brett wird erzeugt, nicht geschrieben
+
+`buildWheel()` in `shared/pursuit/board.ts` liefert alle 73 Knoten samt
+Nachbarschaften und Polarkoordinaten aus rund achtzig Zeilen. Es gibt **keine
+handgepflegte Feldliste**, die auseinanderlaufen könnte – und weil die
+Funktion deterministisch ist und in `shared/` liegt, baut der Client dasselbe
+Rad selbst. Das Brett wandert nie über die Leitung; im Spielzustand stehen nur
+Positions-Indizes.
+
+Die Farbverteilung geht dabei rechnerisch auf: 42 = 6 · 7, jede Farbe käme
+siebenmal vor – abzüglich je einer Käse-Ecke und eines Freiwurfs liegt jede
+Farbe **genau fünfmal** im Ring. Das ist der Grund für die 42.
+
+Bewegung ist eine Tiefensuche über genau *n* Kanten mit einer Sperre gegen die
+sofortige Kehrtwende. Zwei Regeln fallen daraus von selbst heraus: die Mitte
+**muss exakt getroffen werden** (sie ist im Ergebnis oder nicht), und man darf
+**durch die Mitte hindurch** in eine andere Speiche – sie ist ein normaler
+Knoten mit sechs Nachbarn. Festsitzen kann niemand: kein Feld hat nur einen
+Nachbarn.
+
+### 🖥 Rad auf dem Fernseher, Würfel auf den Handys
+
+Wie bei Jeopardy: ein zusätzliches Gerät tritt mit demselben Raum-Code der
+laufenden Partie bei und zeigt das Rad groß. Die erreichbaren Felder werden
+dabei **für alle** hervorgehoben und durchnummeriert – am Fernseher soll man
+sehen, worüber gerade nachgedacht wird –, antippen darf sie nur, wer am Zug
+ist. Dieselben Ziffern stehen auf der Knopfreihe im Aktionspanel: SVG-Pfade
+sind keine Knöpfe, und zwei Ziele derselben Farbe wären sonst nicht
+auseinanderzuhalten.
+
+Am gemeinsamen Gerät dreht sich das Rad zu dem, der am Zug ist. Die Frage steht
+in der Seitenspalte und bleibt aufrecht – so wie bei Monopoly auch. Wen das
+stört, wählt „Weiterreichen".
+
+### Bewusst nicht drin
+
+Kein Verfolgungsfeld, keine Sonderwürfe. Die Mitte ohne alle Käsestücke stellt
+eine Frage aus einer zufälligen Farbe, statt ein totes Feld zu sein.
+
+---
+
 ## 🃏 Texas Hold'em Poker
 
 - **2–9 Spieler** pro Tisch, No-Limit
@@ -335,6 +400,8 @@ shared/            Engines & Typen (laufen auf Server UND Client)
   monopoly/module.ts Monopoly als Plattform-Modul (dünner Adapter)
   poker/module.ts    Poker als Plattform-Modul (dünner Adapter)
   jeopardy/module.ts Jeopardy als Plattform-Modul (dünner Adapter)
+  pursuit/module.ts  Trivial Pursuit als Plattform-Modul (dünner Adapter)
+  trivia/text.ts     Normalisieren und Levenshtein – ohne Abhängigkeiten
   trivia/types.ts    Fragenformat für Jeopardy & Trivial Pursuit + Validierung
   trivia/ask.ts      Fragen ziehen, Antworten prüfen, Ablenker bilden
   trivia/packs/      Mitgeliefertes deutsches Paket (300 Fragen)
@@ -353,6 +420,11 @@ shared/            Engines & Typen (laufen auf Server UND Client)
     types.ts         Jeopardy-Typen: JeopardyState, Brett, laufende Frage, Aktionen
     engine.ts        Brett, Buzzer-Rennen, freie Antwort, Wertung, Punkte
     rules.ts         Jeopardy-Raumoptionen, Gnadenfenster, Reaktionszeit-Grenzen
+  pursuit/
+    board.ts         Das Rad: buildWheel() erzeugt 73 Knoten, reachable() bewegt
+    types.ts         Trivial-Pursuit-Typen: Zustand, Zugphasen, Aktionen
+    engine.ts        Würfeln, Ziehen, Käsestücke, Schlussfrage, Wertung
+    rules.ts         Raumoptionen, Lesepausen, Gnadenfrist für Getrennte
 
 server/            Node.js + Express + Socket.io
   index.ts           HTTP-Server, liefert client/dist aus (BASE_PATH-fähig)
@@ -365,6 +437,7 @@ client/            React 18 + TypeScript + Vite + zustand
   games/monopoly/    Board, GameTable, Panels, Dialoge, AdminPanel
   games/poker/       PokerTable (Tisch, Sitze, Action-Bar), PlayingCard
   games/jeopardy/    JeopardyTable (Brett-/Handy-Ansicht), Board, Clue
+  games/pursuit/     Wheel (das Rad als SVG), Wedges, Panels, PursuitTable
   games/trivia/      PackEditor (Fragenpakete anlegen und bearbeiten)
   components/        Chat, Modal, Toasts (spielübergreifend)
   hooks/             useHashRoute (teilbare #/room/CODE-Links)
@@ -379,12 +452,14 @@ tests/
   engine.test.ts      30 Unit-Tests Monopoly-Regeln inkl. Auktionen (node:test)
   poker.test.ts       19 Unit-Tests Poker (Rankings, Side-Pots, Blinds, Timeouts)
   local-room.test.ts  27 Unit-Tests lokaler Raum: Sitzrotation, Klon-Vertrag, Redaction
-  trivia.test.ts      16 Unit-Tests Fragenformat, Ablenker, mitgeliefertes Paket
-  jeopardy.test.ts    28 Unit-Tests Jeopardy: Buzzer-Rennen, Sperre, Wertung, Redaktion
+  trivia.test.ts      18 Unit-Tests Fragenformat, Ablenker, mitgeliefertes Paket
+  jeopardy.test.ts    29 Unit-Tests Jeopardy: Buzzer-Rennen, Sperre, Wertung, Redaktion
+  pursuit.test.ts     43 Unit-Tests Trivial Pursuit: Wegenetz, Bewegung, Käse, Finale
   e2e.ts              Browser-E2E Monopoly: 2 Spieler, Link-Beitritt, echtes Spiel
   e2e-poker.ts        Browser-E2E Poker: Showdown, Raise/Fold, Redaction, Zuschauer
   e2e-local.ts        Browser-E2E Pass & Play – mit abgeschaltetem Netz
   e2e-jeopardy.ts     Browser-E2E Jeopardy: Fernseher + zwei Handys, dazu lokal
+  e2e-pursuit.ts      Browser-E2E Trivial Pursuit: Rad, Käsestück, Freitext lokal
 ```
 
 **Designentscheidungen**
@@ -403,8 +478,9 @@ tests/
   (`GAME_MODULES` in `shared/registry.ts`) und die Oberfläche (`CLIENT_GAMES`
   in `client/src/games/registry.tsx`). Vorher waren es rund siebzig
   `game ? … : poker ? …`-Ketten, an denen ein drittes Spiel stumm
-  durchgefallen wäre. Jeopardy war die Probe aufs Exempel: Der Compiler hat
-  jede fehlende Stelle benannt, statt es stumm als Poker zu rendern.
+  durchgefallen wäre. Jeopardy und Trivial Pursuit waren die Probe aufs
+  Exempel: Der Compiler hat jedes Mal jede fehlende Stelle benannt, statt sie
+  stumm als Poker zu rendern.
 - **Inhalt liegt nicht im Zustand, wenn er geheim sein soll**: Monopoly bettet
   seine Edition ein, damit Spielstände autark sind. Jeopardy tut das mit dem
   Fragenpaket bewusst NICHT – es hat keine Spielstände, und die Antworten

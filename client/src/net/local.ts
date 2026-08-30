@@ -12,6 +12,7 @@ import { BUILT_IN_PACKS } from '@shared/trivia/packs/standard-de';
 import type { AnyGameState, GameId, RoomEnvelope } from '@shared/games';
 import type { PokerRules } from '@shared/poker/types';
 import type { JeopardyRules } from '@shared/jeopardy/types';
+import type { PursuitRules } from '@shared/pursuit/types';
 import { moduleFor } from '@shared/registry';
 import { useStore } from '../state/store';
 import { LOCAL_GAME_KEY, setMode } from './mode';
@@ -221,6 +222,7 @@ export interface StartLocalOptions {
   presetId?: string;
   pokerRules?: Partial<PokerRules>;
   jeopardyRules?: Partial<JeopardyRules>;
+  pursuitRules?: Partial<PursuitRules>;
   editions?: BoardEdition[];
   seatMode?: LocalSeating['mode'];
   seatEdges?: SeatEdge[];

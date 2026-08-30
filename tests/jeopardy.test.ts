@@ -87,7 +87,7 @@ function pick(s: JeopardyState, col = 0, row = 0, now = 1000) {
 }
 
 /** Die richtige Antwort – im Testpaket ist sie gleich der Frage-ID. */
-const solution = (s: JeopardyState) => s.clue!.questionId;
+const solution = (s: JeopardyState) => s.clue!.questionId!;
 
 // ---------------------------------------------------------------------------
 // Aufbau und Brett
@@ -211,7 +211,7 @@ test('Buzzert niemand, läuft die Frage aus und wird aufgelöst', () => {
 
   assert.equal(jeopardyTick(s, clue.deadline!, PACK), true);
   assert.equal(s.clue!.step, 'revealed');
-  assert.equal(s.clue!.answer, clue.questionId, 'die Auflösung steht');
+  assert.equal(s.clue!.answer, clue.questionId!, 'die Auflösung steht');
   assert.equal(s.players.every((p) => p.score === 0), true, 'niemand bekommt Punkte');
 });
 
@@ -382,7 +382,7 @@ test('Die richtige Antwort verlässt den Server erst bei der Auflösung', () => 
 
   act(s, picker(s), { type: 'skip' }, t + 10);
   assert.equal(s.clue!.step, 'revealed');
-  assert.equal(jeopardyView(s).clue!.answer, s.clue!.questionId, 'jetzt schon');
+  assert.equal(jeopardyView(s).clue!.answer, s.clue!.questionId!, 'jetzt schon');
 });
 
 test('Die Redaktion verändert den echten Zustand nicht', () => {
@@ -423,7 +423,7 @@ test('Eine Frage wiederholt sich in einer Partie nicht', () => {
   const seen = new Set<string>();
   for (let row = 0; row < ROWS.length; row++) {
     act(s, picker(s), { type: 'pick', col: 0, row }, 5000);
-    const id = s.clue!.questionId;
+    const id = s.clue!.questionId!;
     assert.equal(seen.has(id), false, `Frage doppelt: ${id}`);
     seen.add(id);
     jeopardyTick(s, s.clue!.deadline!, PACK);
@@ -468,4 +468,20 @@ test('Lokal genügt ein Tipp zum Werten – sonst hinge die Runde ohne Uhr', () 
   act(s, 'p0', { type: 'judge', correct: true }, 1700);
   assert.equal(s.clue!.step, 'revealed', 'kein Warten auf die zweite Stimme');
   assert.equal(s.players.find((p) => p.id === 'p1')!.score, clue.value);
+});
+
+test('Auch die Frage-Kennung verlässt den Server erst bei der Auflösung', () => {
+  // Die Antwort zu schwärzen und die Kennung mitzuschicken wäre wirkungslos:
+  // der Client hat die Fragenpakete gebündelt dabei und schlüge sie nach.
+  const s = game();
+  pick(s);
+  assert.equal(jeopardyView(s).clue!.questionId, null);
+
+  const t = buzzedIn(s);
+  act(s, 'p1', { type: 'answer', text: solution(s) }, t);
+  assert.equal(jeopardyView(s).clue!.questionId, null, 'auch während der Wertung nicht');
+
+  act(s, 'p0', { type: 'judge', correct: true }, t);
+  act(s, 'p2', { type: 'judge', correct: true }, t);
+  assert.equal(jeopardyView(s).clue!.questionId, s.clue!.questionId, 'jetzt schon');
 });

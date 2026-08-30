@@ -7,6 +7,7 @@
 import type { GameState } from './types';
 import type { PokerView } from './poker/types';
 import type { JeopardyView } from './jeopardy/types';
+import type { PursuitView } from './pursuit/types';
 
 /**
  * Zustandstyp je Spiel – die EINE Stelle, an der die Spiele-Liste steht.
@@ -19,6 +20,7 @@ export interface GameStateMap {
   monopoly: GameState;
   poker: PokerView;
   jeopardy: JeopardyView;
+  pursuit: PursuitView;
 }
 
 export type GameId = keyof GameStateMap;
@@ -71,6 +73,17 @@ export const GAME_INFOS: Record<GameId, GameInfo> = {
     minPlayers: 2,
     maxPlayers: 8,
     duration: '25–45 min',
+  },
+  pursuit: {
+    id: 'pursuit',
+    name: 'Trivial Pursuit',
+    tagline: 'Würfeln, ziehen, wissen – sechs Käsestücke bis zum Sieg.',
+    description:
+      'Das volle Rad: 42 Felder im Ring, sechs Speichen zur Mitte, sechs Käse-Ecken. Wer richtig antwortet, würfelt weiter; wer alle Käsestücke hat, muss die Mitte exakt treffen – und die Runde bestimmt die Farbe der Schlussfrage. Ankreuzen oder frei antworten, ganz wie ihr wollt.',
+    emoji: '🧀',
+    minPlayers: 2,
+    maxPlayers: 6,
+    duration: '45–90 min',
   },
 };
 

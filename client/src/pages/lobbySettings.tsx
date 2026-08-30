@@ -9,6 +9,8 @@
 import { RULE_FIELDS } from '@shared/rules';
 import { POKER_LIMITS } from '@shared/poker/rules';
 import { JEOPARDY_LIMITS } from '@shared/jeopardy/rules';
+import { PURSUIT_LIMITS } from '@shared/pursuit/rules';
+import type { PursuitRules } from '@shared/pursuit/types';
 import { checkPack } from '@shared/trivia/types';
 import type { RuleSet } from '@shared/types';
 import type { PokerRules } from '@shared/poker/types';
@@ -237,6 +239,118 @@ export function JeopardySettings({ isHost }: { isHost: boolean }) {
       <p className="hint">
         🖥 Ein weiteres Gerät kann mit demselben Code beitreten und zeigt dann das
         Brett groß – die Spieler buzzern mit dem Handy.
+      </p>
+
+      {isHost && (
+        <div className="lobby-actions">
+          <button className="btn ghost" onClick={() => openDialog({ type: 'packs' })}>
+            ✏️ Fragen bearbeiten
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
+
+export function PursuitSettings({ isHost }: { isHost: boolean }) {
+  const view = useStore((s) => s.pursuit)!;
+  const packs = useStore((s) => s.packs);
+  const openDialog = useStore((s) => s.openDialog);
+  const rules = view.rules;
+
+  function set<K extends keyof PursuitRules>(key: K, value: PursuitRules[K]) {
+    api.configureLobby({ pursuit: { [key]: value } });
+  }
+
+  const pack = packs.find((p) => p.id === rules.packId);
+  const report = pack ? checkPack(pack) : null;
+
+  const numberRow = (label: string, key: 'wedgesToWin' | 'answerSeconds' | 'judgeSeconds') => (
+    <label className="rule-row number">
+      <span>{label}</span>
+      <input
+        type="number"
+        className="input small"
+        disabled={!isHost}
+        min={PURSUIT_LIMITS[key].min}
+        max={PURSUIT_LIMITS[key].max}
+        step={PURSUIT_LIMITS[key].step}
+        value={rules[key]}
+        onChange={(e) => set(key, Number(e.target.value))}
+      />
+    </label>
+  );
+
+  return (
+    <>
+      <label className="field">
+        <span>Fragenpaket</span>
+        <select
+          className="input"
+          disabled={!isHost}
+          value={rules.packId}
+          onChange={(e) => set('packId', e.target.value)}
+        >
+          {packs.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+              {p.builtIn ? '' : ' (eigenes)'}
+            </option>
+          ))}
+        </select>
+      </label>
+      {report && (
+        <p className="hint">
+          {report.total} Fragen
+          {report.ok
+            ? ' · alle Fächer haben genug verschiedene Antworten'
+            : ` · ⚠️ ${report.thin.length} Fächer zu dünn für Multiple Choice`}
+        </p>
+      )}
+
+      <div className="rules-list">
+        {numberRow('Käsestücke zum Sieg', 'wedgesToWin')}
+        {numberRow('Bedenkzeit zum Antworten (Sek.)', 'answerSeconds')}
+        {numberRow('Zeit zum Werten bzw. Abstimmen (Sek.)', 'judgeSeconds')}
+        <label className="rule-row number">
+          <span>Schwierigkeit</span>
+          <select
+            className="input small"
+            disabled={!isHost}
+            value={rules.level}
+            onChange={(e) => set('level', Number(e.target.value) as PursuitRules['level'])}
+          >
+            <option value={0}>gemischt</option>
+            {[1, 2, 3, 4, 5].map((l) => (
+              <option key={l} value={l}>
+                Stufe {l}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="rule-row boolean">
+          <span>Frei antworten statt ankreuzen</span>
+          <input
+            type="checkbox"
+            disabled={!isHost}
+            checked={rules.freeText}
+            onChange={(e) => set('freeText', e.target.checked)}
+          />
+        </label>
+        <label className="rule-row boolean">
+          <span>Debug-Modus (Würfel manuell setzbar)</span>
+          <input
+            type="checkbox"
+            disabled={!isHost}
+            checked={rules.debugMode}
+            onChange={(e) => set('debugMode', e.target.checked)}
+          />
+        </label>
+      </div>
+
+      <p className="hint">
+        🖥 Ein weiteres Gerät kann mit demselben Code beitreten und zeigt dann das
+        Rad groß – gewürfelt und geantwortet wird am Handy.
       </p>
 
       {isHost && (

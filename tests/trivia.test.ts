@@ -216,6 +216,35 @@ test('checkPack meldet zu dünne Fächer', () => {
   assert.equal(report.thin.length, TRIVIA_CATEGORIES.length * TRIVIA_LEVELS.length);
   const geo1 = report.thin.find((t) => t.category === 'geografie' && t.level === 1);
   assert.equal(geo1?.count, 2, `zwei Fragen sind weniger als ${MIN_PER_BUCKET}`);
+  assert.equal(geo1?.distinct, 2);
+});
+
+test('checkPack zählt verschiedene ANTWORTEN, nicht Fragen', () => {
+  // Vier Fragen, aber nur drei verschiedene Lösungen: daraus lassen sich
+  // keine drei Ablenker bilden, und Trivial Pursuit stünde auf jedem Feld
+  // mit weniger als vier Möglichkeiten da.
+  const pack = packOf([
+    { id: 'a', category: 'sport', level: 1, prompt: 'A?', answer: 'Fußball' },
+    { id: 'b', category: 'sport', level: 1, prompt: 'B?', answer: 'fussball!' },
+    { id: 'c', category: 'sport', level: 1, prompt: 'C?', answer: 'Handball' },
+    { id: 'd', category: 'sport', level: 1, prompt: 'D?', answer: 'Tennis' },
+  ]);
+  const bucket = checkPack(pack).thin.find((t) => t.category === 'sport' && t.level === 1);
+  assert.equal(bucket?.count, 4, 'vier Fragen …');
+  assert.equal(bucket?.distinct, 3, '… aber nur drei verschiedene Antworten');
+});
+
+test('Das mitgelieferte Paket besteht auch die strengere Prüfung', () => {
+  const report = checkPack(STANDARD_DE);
+  assert.deepEqual(report.thin, []);
+  for (const c of TRIVIA_CATEGORIES) {
+    for (const l of TRIVIA_LEVELS) {
+      assert.ok(
+        report.distinct[bucketKey(c, l)] >= MIN_PER_BUCKET,
+        `${c}/${l} hat nur ${report.distinct[bucketKey(c, l)]} verschiedene Antworten`
+      );
+    }
+  }
 });
 
 test('Das mitgelieferte Paket ist vollständig und bespielbar', () => {

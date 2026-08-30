@@ -19,6 +19,7 @@ import type { TriviaPack } from './trivia/types';
 import { monopolyModule } from './monopoly/module';
 import { pokerModule } from './poker/module';
 import { jeopardyModule } from './jeopardy/module';
+import { pursuitModule } from './pursuit/module';
 
 /** Was die Plattform von einem Spieler wissen muss – spielunabhängig. */
 export interface SeatInfo {
@@ -177,6 +178,7 @@ export const GAME_MODULES: { [K in GameId]: GameModule<K> } = {
   monopoly: monopolyModule,
   poker: pokerModule,
   jeopardy: jeopardyModule,
+  pursuit: pursuitModule,
 };
 
 /**

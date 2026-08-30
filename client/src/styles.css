@@ -1644,6 +1644,17 @@ button,
   --cat-sport: #e2762e;
 }
 
+/* Verschiedene Antworten je Fach – nur sichtbar, wenn es weniger sind als
+   Fragen. Genau dieser Fall lässt ein Fach voll aussehen, obwohl es für
+   Multiple Choice nicht reicht. */
+.pack-grid-distinct {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 400;
+  opacity: 0.75;
+}
+.pack-grid-distinct::before { content: '↳ '; }
+
 .jeopardy-layout { grid-template-columns: minmax(0, 1fr) 340px; grid-template-areas: 'table side'; }
 .jeopardy .side.right { grid-area: side; }
 .jeo-main {
@@ -1835,7 +1846,18 @@ button,
 .jeo-idle { display: flex; flex-direction: column; gap: 14px; justify-content: center; flex: 1; }
 
 @media (max-width: 1240px) {
-  .jeopardy-layout {
+  /* Verschiedene Antworten je Fach – nur sichtbar, wenn es weniger sind als
+   Fragen. Genau dieser Fall lässt ein Fach voll aussehen, obwohl es für
+   Multiple Choice nicht reicht. */
+.pack-grid-distinct {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 400;
+  opacity: 0.75;
+}
+.pack-grid-distinct::before { content: '↳ '; }
+
+.jeopardy-layout {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) auto;
     grid-template-areas: 'table' 'side';
@@ -1843,11 +1865,246 @@ button,
 }
 
 @media (max-width: 880px) {
-  .jeopardy-layout { grid-template-areas: 'table' 'side'; }
+  /* Verschiedene Antworten je Fach – nur sichtbar, wenn es weniger sind als
+   Fragen. Genau dieser Fall lässt ein Fach voll aussehen, obwohl es für
+   Multiple Choice nicht reicht. */
+.pack-grid-distinct {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 400;
+  opacity: 0.75;
+}
+.pack-grid-distinct::before { content: '↳ '; }
+
+.jeopardy-layout { grid-template-areas: 'table' 'side'; }
   /* Sechs Spalten sind auf einem Handy nicht mehr tippbar – das Brett
      kippt deshalb auf sechs ZEILEN mit fünf Feldern. */
   .jeo-board { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   .jeo-col { grid-template-rows: none; grid-template-columns: 1.6fr repeat(5, minmax(0, 1fr)); align-items: stretch; }
   .jeo-cat { flex-direction: row; gap: 6px; justify-content: flex-start; padding: 8px; text-align: left; }
   .jeo-cell { font-size: 1rem; }
+}
+
+/* ===========================================================================
+   Trivial Pursuit
+   =========================================================================== */
+
+:root {
+  /* Felder ohne Farbe: Freiwurf und Untergrund der Speichen. */
+  --tp-again: #46587e;
+}
+
+.pursuit-layout { grid-template-columns: minmax(0, 1fr) 380px; grid-template-areas: 'wheel side'; }
+.pursuit .side.right { grid-area: side; }
+.tp-main {
+  grid-area: wheel;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+}
+
+/* -- Das Rad -------------------------------------------------------------- */
+
+.tp-wheel-wrap {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tp-wheel {
+  /* Quadratisch und so groß wie der Platz hergibt – dieselbe Rechnung wie
+     beim Monopoly-Brett, nur ohne aspect-ratio (das macht die viewBox). */
+  width: min(100%, calc(100dvh - 160px));
+  max-height: 100%;
+  /* Feste Plätze: nur das Rad dreht sich, die Seitenspalte bleibt aufrecht. */
+  transform: rotate(var(--seat-rotation, 0deg));
+  transition: transform 420ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.tp-seg {
+  stroke: rgba(9, 14, 26, 0.55);
+  stroke-width: 1;
+  transition: filter 140ms ease;
+}
+.tp-seg.kind-hq { stroke: #f4f7ff; stroke-width: 1.6; }
+.tp-seg.kind-rollAgain { opacity: 0.55; }
+
+/* Nur erreichbare Ziele reagieren – der Rest ist Kulisse. */
+.tp-seg.pickable {
+  cursor: pointer;
+  stroke: #fff;
+  stroke-width: 2.4;
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.75));
+}
+.tp-seg.pickable:hover { filter: drop-shadow(0 0 8px #fff) brightness(1.15); }
+
+.tp-spoke-line { stroke: var(--tp-again); stroke-width: 9; stroke-linecap: round; opacity: 0.55; }
+
+.tp-hq-emoji,
+.tp-again-mark {
+  font-size: 9px;
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+}
+.tp-again-mark { font-size: 6px; opacity: 0.8; }
+
+/* Ziffer auf dem hervorgehobenen Ziel – zwei Ziele derselben Farbe wären
+   an den Knöpfen sonst nicht auseinanderzuhalten. */
+.tp-target-num {
+  font-size: 8px;
+  font-weight: 800;
+  text-anchor: middle;
+  dominant-baseline: central;
+  fill: #0d1322;
+  paint-order: stroke;
+  stroke: #fff;
+  stroke-width: 2.5;
+  pointer-events: none;
+}
+
+.tp-hub-ring { fill: none; stroke: #f4f7ff; stroke-width: 2; }
+.tp-hub.pickable { cursor: pointer; }
+.tp-hub.pickable .tp-hub-ring { stroke-width: 3.5; filter: drop-shadow(0 0 8px #fff); }
+
+.tp-token {
+  stroke: #0d1322;
+  stroke-width: 1.6;
+  /* Die Figur gleitet zum Ziel. Feld für Feld zu laufen wäre auf einem
+     Wegenetz mit Abzweigungen gar nicht definiert. */
+  transition: cx 380ms ease, cy 380ms ease;
+}
+
+/* -- Spielerliste mit Käse-Torten ----------------------------------------- */
+
+.tp-players {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0;
+  margin: 0;
+  width: 100%;
+}
+.tp-player {
+  flex: 1 1 190px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  border-left-width: 4px;
+  background: var(--panel);
+}
+.tp-player.current { background: var(--panel-2); box-shadow: 0 0 0 2px var(--accent) inset; }
+.tp-player.away, .tp-player.out { opacity: 0.5; }
+.tp-player-name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 5px; }
+.tp-player-count { font-variant-numeric: tabular-nums; }
+.tp-wedges { flex-shrink: 0; }
+.tp-rank-wedges { display: inline-flex; align-items: center; gap: 6px; }
+
+/* -- Aktionspanel --------------------------------------------------------- */
+
+.tp-side { gap: 10px; }
+.tp-panel { gap: 10px; }
+.tp-turn-text { flex: 1; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tp-die { font-variant-numeric: tabular-nums; font-weight: 700; }
+.tp-clock { font-variant-numeric: tabular-nums; color: var(--text-dim); margin-left: auto; }
+.tp-clock.urgent { color: #ff6b6b; font-weight: 700; }
+
+/* Ziele und Kategorien: dieselbe Knopfform, damit die Reihe wiedererkennbar ist. */
+.tp-targets { display: flex; flex-wrap: wrap; gap: 8px; }
+.tp-target {
+  border-left-width: 4px;
+  min-height: 46px;
+  flex: 1 1 130px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.tp-target-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #fff;
+  color: #0d1322;
+  font-weight: 800;
+  font-size: 0.75rem;
+}
+
+.tp-debug { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.tp-debug .btn { min-width: 34px; padding: 4px 8px; }
+
+.tp-clue { gap: 10px; }
+.tp-clue-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tp-clue-cat {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #0d1322;
+}
+.tp-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--panel-3);
+  font-size: 0.75rem;
+}
+.tp-badge.final { background: var(--accent-2); }
+
+.tp-prompt { margin: 0; font-size: 1.08rem; line-height: 1.4; }
+
+.tp-options { display: flex; flex-direction: column; gap: 8px; }
+.tp-option { min-height: 50px; text-align: left; justify-content: flex-start; }
+
+.tp-answer-form { display: flex; flex-direction: column; gap: 8px; }
+.tp-submitted { margin: 0; display: flex; flex-direction: column; gap: 2px; }
+.tp-submitted strong { font-size: 1.15rem; }
+
+.tp-verdict { margin: 0; font-weight: 700; font-size: 1.05rem; }
+.tp-verdict.right { color: var(--accent); }
+.tp-verdict.wrong { color: #ff6b6b; }
+.tp-solution { margin: 0; }
+.tp-solution strong { color: #ffd15c; }
+
+.tp-final-head { margin: 0; font-size: 1.05rem; }
+
+/* -- Schmale Bildschirme: Rad kleiner, Knöpfe groß ------------------------ */
+
+@media (max-width: 1240px) {
+  .pursuit-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-areas: 'wheel' 'side';
+  }
+  .tp-wheel { width: min(100%, calc(100dvh - 380px)); }
+  /* Am Handy zählen die Knöpfe mehr als das Rad – auf einem breiten
+     Bildschirm ist dagegen Platz für beides, deshalb steht das hier und
+     nicht als allgemeine Regel. */
+  .tp-main.player-view .tp-wheel { width: min(100%, 40dvh); }
+}
+
+@media (max-width: 880px) {
+  .pursuit-layout { grid-template-areas: 'wheel' 'side'; }
+  /* Am Handy zuerst handeln, dann schauen: Würfel- und Antwortknöpfe nach
+     oben, das Rad darunter. In der Rad-Ansicht (Fernseher) bleibt es
+     umgekehrt – dort schaut man ja nur zu. */
+  .pursuit-layout.player-view {
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas: 'side' 'wheel';
+  }
+  .tp-wheel { width: min(100%, 62dvh); }
+  .tp-main.player-view .tp-wheel { width: min(100%, 34dvh); }
+  .tp-player { flex-basis: 100%; }
 }

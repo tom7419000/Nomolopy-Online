@@ -8,7 +8,9 @@ import { GAME_CATALOG, getGameInfo, type GameId, type GameInfo } from '@shared/g
 import { DEFAULT_POKER_RULES } from '@shared/poker/rules';
 import type { PokerRules } from '@shared/poker/types';
 import { DEFAULT_JEOPARDY_RULES } from '@shared/jeopardy/rules';
+import { DEFAULT_PURSUIT_RULES } from '@shared/pursuit/rules';
 import type { JeopardyRules } from '@shared/jeopardy/types';
+import type { PursuitRules } from '@shared/pursuit/types';
 import { moduleFor } from '@shared/registry';
 import { api } from '../net';
 import { loadName, saveName, useStore } from '../state/store';
@@ -70,6 +72,7 @@ function CreateRoomDialog({
   const [presetId, setPresetId] = useState('classic');
   const [poker, setPoker] = useState<PokerRules>({ ...DEFAULT_POKER_RULES });
   const [jeopardy, setJeopardy] = useState<JeopardyRules>({ ...DEFAULT_JEOPARDY_RULES });
+  const [pursuit, setPursuit] = useState<PursuitRules>({ ...DEFAULT_PURSUIT_RULES });
   const [busy, setBusy] = useState(false);
 
   async function create() {
@@ -85,6 +88,7 @@ function CreateRoomDialog({
       presetId,
       pokerRules: poker,
       jeopardyRules: jeopardy,
+      pursuitRules: pursuit,
     });
     setBusy(false);
     if (r.ok) onClose();
@@ -133,6 +137,8 @@ function CreateRoomDialog({
         setPoker={(v) => setPoker(v as unknown as PokerRules)}
         jeopardy={jeopardy as unknown as Record<string, unknown>}
         setJeopardy={(v) => setJeopardy(v as unknown as JeopardyRules)}
+        pursuit={pursuit as unknown as Record<string, unknown>}
+        setPursuit={(v) => setPursuit(v as unknown as PursuitRules)}
       />
 
       <button className="btn primary big" disabled={busy} onClick={create}>

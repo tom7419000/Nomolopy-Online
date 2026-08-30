@@ -198,13 +198,15 @@ export function PackEditor() {
           </div>
         ))}
         {TRIVIA_CATEGORIES.map((c) => (
-          <FragmentRow key={c} category={c} counts={report.counts} />
+          <FragmentRow key={c} category={c} counts={report.counts} distinct={report.distinct} />
         ))}
       </div>
       {!report.ok && (
         <p className="hint">
-          Jedes Fach braucht mindestens {MIN_PER_BUCKET} Fragen: Trivial Pursuit bildet
-          die falschen Antwortmöglichkeiten aus den übrigen Antworten desselben Fachs.
+          Jedes Fach braucht mindestens {MIN_PER_BUCKET} <strong>verschiedene Antworten</strong>:
+          Trivial Pursuit bildet die falschen Antwortmöglichkeiten aus den übrigen
+          Antworten desselben Fachs, und zwei Fragen mit derselben Lösung liefern
+          nur eine davon.
         </p>
       )}
 
@@ -386,9 +388,11 @@ export function PackEditor() {
 function FragmentRow({
   category,
   counts,
+  distinct,
 }: {
   category: TriviaCategory;
   counts: Record<string, number>;
+  distinct: Record<string, number>;
 }) {
   return (
     <>
@@ -396,10 +400,19 @@ function FragmentRow({
         {CATEGORY_EMOJI[category]} {CATEGORY_LABELS[category]}
       </div>
       {TRIVIA_LEVELS.map((l) => {
-        const n = counts[bucketKey(category, l)] ?? 0;
+        const key = bucketKey(category, l);
+        const n = counts[key] ?? 0;
+        const d = distinct[key] ?? 0;
         return (
-          <div key={l} className={`pack-grid-cell ${n < MIN_PER_BUCKET ? 'thin' : ''}`}>
+          <div
+            key={l}
+            className={`pack-grid-cell ${d < MIN_PER_BUCKET ? 'thin' : ''}`}
+            // Der Unterschied fällt sonst nicht auf: das Fach kann voll
+            // aussehen und trotzdem zu wenige verschiedene Antworten haben.
+            title={d < n ? `${n} Fragen, aber nur ${d} verschiedene Antworten` : `${n} Fragen`}
+          >
             {n}
+            {d < n && <span className="pack-grid-distinct">{d}</span>}
           </div>
         );
       })}

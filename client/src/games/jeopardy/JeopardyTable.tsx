@@ -190,6 +190,7 @@ export function JeopardyTable() {
             <button
               className="btn ghost small"
               title={showBoard ? 'Zurück zum Buzzer' : 'Brett groß zeigen (z. B. am Fernseher)'}
+              aria-label={showBoard ? 'Buzzer-Ansicht' : 'Brett-Ansicht'}
               onClick={() => setShowBoard((v) => !v)}
             >
               {showBoard ? '📱' : '🖥'}

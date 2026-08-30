@@ -6,6 +6,7 @@ import { BUILT_IN_PACKS } from '@shared/trivia/packs/standard-de';
 import type { LobbyChatMessage, PublicRoomInfo, RoomEnvelope } from '@shared/games';
 import type { PokerView } from '@shared/poker/types';
 import type { JeopardyView } from '@shared/jeopardy/types';
+import type { PursuitView } from '@shared/pursuit/types';
 import { moduleFor } from '@shared/registry';
 import { CLIENT_GAMES } from '../games/registry';
 import type { LocalSeating, SeatEdge } from '../net/localRoom';
@@ -54,6 +55,8 @@ interface AppStore {
   poker: PokerView | null;
   /** Bequemer Zugriff: Jeopardy-Sicht, wenn der Raum Jeopardy spielt */
   jeopardy: JeopardyView | null;
+  /** Bequemer Zugriff: Trivial-Pursuit-Sicht */
+  pursuit: PursuitView | null;
   lobbyRooms: PublicRoomInfo[];
   lobbyChat: LobbyChatMessage[];
   toasts: Toast[];
@@ -88,6 +91,7 @@ export const useStore = create<AppStore>((set, get) => ({
   game: null,
   poker: null,
   jeopardy: null,
+  pursuit: null,
   lobbyRooms: [],
   lobbyChat: [],
   toasts: [],
@@ -104,6 +108,7 @@ export const useStore = create<AppStore>((set, get) => ({
     const game = room?.monopoly ?? null;
     const poker = room?.poker ?? null;
     const jeopardy = room?.jeopardy ?? null;
+    const pursuit = room?.pursuit ?? null;
 
     if (room && session) {
       const gameId = room.meta.gameId;
@@ -135,7 +140,7 @@ export const useStore = create<AppStore>((set, get) => ({
       }
     }
 
-    set({ room, game, poker, jeopardy });
+    set({ room, game, poker, jeopardy, pursuit });
   },
 
   setSession: (session) => set({ session }),

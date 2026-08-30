@@ -14,14 +14,22 @@ import type { AnyGameState, GameId } from '@shared/games';
 import { GameTable } from './monopoly/GameTable';
 import { PokerTable } from './poker/PokerTable';
 import { JeopardyTable } from './jeopardy/JeopardyTable';
-import { MonopolySettings, PokerSettings, JeopardySettings } from '../pages/lobbySettings';
+import { PursuitTable } from './pursuit/PursuitTable';
+import {
+  MonopolySettings,
+  PokerSettings,
+  JeopardySettings,
+  PursuitSettings,
+} from '../pages/lobbySettings';
 import {
   MonopolyCreateFields,
   PokerCreateFields,
   JeopardyCreateFields,
+  PursuitCreateFields,
 } from '../pages/createFields';
 import { monopolyNotify } from './monopoly/notify';
 import { jeopardyNotify } from './jeopardy/notify';
+import { pursuitNotify } from './pursuit/notify';
 
 /** Kontext für spielspezifische Hinweise beim Zustandswechsel. */
 export interface NotifyContext {
@@ -54,6 +62,8 @@ export interface CreateFieldsProps {
   setPoker(v: Record<string, unknown>): void;
   jeopardy: Record<string, unknown>;
   setJeopardy(v: Record<string, unknown>): void;
+  pursuit: Record<string, unknown>;
+  setPursuit(v: Record<string, unknown>): void;
   /** Lokal gibt es keine Bedenkzeit – das Feld entfällt dort. */
   local?: boolean;
 }
@@ -75,5 +85,11 @@ export const CLIENT_GAMES: Record<GameId, ClientGame> = {
     LobbySettings: JeopardySettings,
     CreateFields: JeopardyCreateFields,
     notify: jeopardyNotify,
+  },
+  pursuit: {
+    Table: PursuitTable,
+    LobbySettings: PursuitSettings,
+    CreateFields: PursuitCreateFields,
+    notify: pursuitNotify,
   },
 };

@@ -10,6 +10,8 @@
  * spielspezifische Abdeckungsprüfung.
  */
 
+import { normalize } from './text';
+
 export type TriviaCategory =
   | 'geografie'
   | 'unterhaltung'
@@ -98,21 +100,31 @@ export const MAX_QUESTIONS_PER_PACK = 5000;
  * Trivial Pursuit erzeugt seine drei falschen Antwortmöglichkeiten aus den
  * Antworten anderer Fragen desselben Fachs – dafür braucht es neben der
  * richtigen noch drei weitere, also vier insgesamt.
+ *
+ * Gezählt werden dabei VERSCHIEDENE Antworten, nicht Fragen: zwei Fragen mit
+ * derselben Lösung liefern nur einen Ablenker. Verglichen wird über
+ * `normalize`, damit „Die Elbe" und „Elbe" nicht als zwei durchgehen – genau
+ * so bildet `distractors` sie schließlich auch.
  */
 export const MIN_PER_BUCKET = 4;
 
 export interface PackIssue {
   category: TriviaCategory;
   level: TriviaLevel;
+  /** Fragen im Fach. */
   count: number;
+  /** Davon verschiedene Antworten – das ist die Zahl, die zählt. */
+  distinct: number;
 }
 
 export interface PackReport {
   ok: boolean;
-  /** Fächer mit zu wenigen Fragen (leer, wenn alles passt). */
+  /** Fächer mit zu wenigen verschiedenen Antworten (leer, wenn alles passt). */
   thin: PackIssue[];
-  /** Anzahl je Fach – speist das Abdeckungsraster im Editor. */
+  /** Fragen je Fach – speist das Abdeckungsraster im Editor. */
   counts: Record<string, number>;
+  /** Verschiedene Antworten je Fach. */
+  distinct: Record<string, number>;
   total: number;
 }
 
@@ -127,23 +139,33 @@ export function bucketKey(category: TriviaCategory, level: TriviaLevel): string 
  */
 export function checkPack(pack: TriviaPack): PackReport {
   const counts: Record<string, number> = {};
+  const answers: Record<string, Set<string>> = {};
   for (const c of TRIVIA_CATEGORIES) {
-    for (const l of TRIVIA_LEVELS) counts[bucketKey(c, l)] = 0;
+    for (const l of TRIVIA_LEVELS) {
+      counts[bucketKey(c, l)] = 0;
+      answers[bucketKey(c, l)] = new Set();
+    }
   }
   for (const q of pack.questions) {
     const key = bucketKey(q.category, q.level);
-    if (key in counts) counts[key] += 1;
+    if (!(key in counts)) continue;
+    counts[key] += 1;
+    answers[key].add(normalize(q.answer));
   }
 
+  const distinct: Record<string, number> = {};
   const thin: PackIssue[] = [];
   for (const c of TRIVIA_CATEGORIES) {
     for (const l of TRIVIA_LEVELS) {
-      const count = counts[bucketKey(c, l)];
-      if (count < MIN_PER_BUCKET) thin.push({ category: c, level: l, count });
+      const key = bucketKey(c, l);
+      distinct[key] = answers[key].size;
+      if (distinct[key] < MIN_PER_BUCKET) {
+        thin.push({ category: c, level: l, count: counts[key], distinct: distinct[key] });
+      }
     }
   }
 
-  return { ok: thin.length === 0, thin, counts, total: pack.questions.length };
+  return { ok: thin.length === 0, thin, counts, distinct, total: pack.questions.length };
 }
 
 export function isTriviaCategory(v: unknown): v is TriviaCategory {
