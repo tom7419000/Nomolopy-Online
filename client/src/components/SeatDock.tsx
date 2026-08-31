@@ -21,15 +21,27 @@ import type { SeatEdge } from '../net/localRoom';
 
 export function SeatDock({
   edge,
+  place = 'center',
   className = '',
   children,
 }: {
   edge: SeatEdge;
+  /**
+   * Wo an der Kante das Dock hängt.
+   *
+   * `center` – mittig. Richtig, wo unter dem Dock nichts Wichtiges liegt:
+   *            bei Poker deckt es nur den eigenen Sitz ab.
+   * `hand`   – am Ende der Kante, das zur RECHTEN HAND des Spielers liegt.
+   *            Bei einem Brett ist das der Unterschied zwischen „mitten im
+   *            Spielfeld" und „neben sich gelegt": die Brettmitte bleibt
+   *            frei, verdeckt wird höchstens eine Ecke.
+   */
+  place?: 'center' | 'hand';
   className?: string;
   children: ReactNode;
 }) {
   return (
-    <div className={`seat-dock ${className}`} data-edge={edge}>
+    <div className={`seat-dock place-${place} ${className}`} data-edge={edge}>
       {children}
     </div>
   );

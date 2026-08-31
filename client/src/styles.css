@@ -1551,6 +1551,7 @@ button,
      derselbe Deckel wirkt also an allen vier Kanten. */
   width: min(400px, 62%);
   max-height: 58%;
+  /* An der Ecke reicht weniger: es soll eine Ecke belegen, keine ganze Kante. */
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -1563,36 +1564,67 @@ button,
      interpolieren, und ein Sprung ist ehrlicher als ein Umweg. */
 }
 
-.seat-dock[data-edge='0'] {
+/* Alle Drehungen gehen um eine EIGENE Ecke des Docks und schieben sich danach
+   zurück ins Bild. Der Umweg ist nötig, weil die Maße des Docks nicht
+   feststehen: Prozentwerte in `translate()` beziehen sich auf die eigene
+   Kantenlänge, `left`/`top`/`right`/`bottom` dagegen auf den Elternkasten.
+
+   Die Leserichtung geht dabei auf: bei 90° zeigt die lokale X-Achse nach dem
+   Drehen nach unten, der Text läuft also von oben nach unten – für jemanden,
+   der links sitzt und nach rechts auf den Tisch schaut, ist das normal.
+   Bei 270° spiegelbildlich. */
+
+/* -- Mittig an der Kante (Poker: darunter liegt nur der eigene Sitz) ------ */
+
+.seat-dock.place-center[data-edge='0'] {
   left: 50%;
   bottom: 0;
   transform: translateX(-50%);
 }
-.seat-dock[data-edge='180'] {
+.seat-dock.place-center[data-edge='180'] {
   left: 50%;
   top: 0;
   transform: translateX(-50%) rotate(180deg);
 }
-
-/* Die Seitenkanten drehen um die EIGENE obere Ecke und schieben sich danach
-   zurück ins Bild. Der Umweg ist nötig, weil die Höhe des Docks nicht
-   feststeht: Prozentwerte in `translate()` beziehen sich auf die eigene
-   Kantenlänge, `left`/`top` dagegen auf den Elternkasten.
-
-   Bei 90° zeigt die lokale X-Achse nach dem Drehen nach unten – der Text läuft
-   also von oben nach unten, was für jemanden, der links sitzt und nach rechts
-   auf den Tisch schaut, die normale Leserichtung ist. Bei 270° spiegelbildlich. */
-.seat-dock[data-edge='90'] {
+.seat-dock.place-center[data-edge='90'] {
   left: 0;
   top: 50%;
   transform-origin: 0 0;
   transform: rotate(90deg) translate(-50%, -100%);
 }
-.seat-dock[data-edge='270'] {
+.seat-dock.place-center[data-edge='270'] {
   right: 0;
   top: 50%;
   transform-origin: 100% 0;
   transform: rotate(-90deg) translate(50%, -100%);
+}
+
+/* -- An der rechten Hand (Monopoly, Trivial Pursuit) ---------------------- */
+
+/* Wer unten sitzt, hat rechts vor sich die rechte untere Ecke; wer oben sitzt,
+   die linke obere; links sitzend die linke untere; rechts sitzend die rechte
+   obere. So liegt die Bedienung bei jedem an derselben Hand – und nie mitten
+   im Spielfeld. */
+.seat-dock.place-hand[data-edge='0'] {
+  right: 0;
+  bottom: 0;
+}
+.seat-dock.place-hand[data-edge='180'] {
+  left: 0;
+  top: 0;
+  transform: rotate(180deg);
+}
+.seat-dock.place-hand[data-edge='90'] {
+  left: 0;
+  bottom: 0;
+  transform-origin: 0 100%;
+  transform: rotate(90deg) translate(-100%, 0);
+}
+.seat-dock.place-hand[data-edge='270'] {
+  right: 0;
+  top: 0;
+  transform-origin: 100% 0;
+  transform: rotate(-90deg) translate(0, -100%);
 }
 
 /* Poker: der Filz bleibt stehen, aber jede Sitzbox dreht sich zu ihrem
@@ -2220,6 +2252,8 @@ button,
 }
 
 /* Poker-Dock: die Karten liegen neben den Knöpfen, nicht darüber. */
+.seat-dock.place-hand { width: min(360px, 50%); max-height: 50%; }
+
 .seat-dock.poker-dock {
   width: min(440px, 66%);
   flex-direction: row;

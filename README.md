@@ -87,6 +87,12 @@ hantiert. Genau das macht der **Sitz-Dock**: Würfel, Knöpfe, Frage und die
 letzte Protokollzeile erscheinen an der Kante dessen, der dran ist, und sind zu
 ihm gedreht — wie ein Zettel, den man ihm hinschiebt.
 
+Bei Monopoly und Trivial Pursuit liegt das Dock dabei an der **rechten Hand**
+des Spielers, nicht mittig vor ihm: wer unten sitzt, hat es rechts unten; wer
+oben sitzt, links oben. So bleibt die Brettmitte frei — verdeckt wird
+höchstens eine Ecke (beim runden Rad praktisch gar nichts). Bei Poker hängt es
+mittig an der Kante, denn darunter liegt nur der eigene Sitz.
+
 | Spiel | Was liegt | Was sich dreht |
 |---|---|---|
 | 🎲 **Monopoly** | das Brett | Würfel, Aktionsknöpfe, Geldübersicht, letzte Zeile |

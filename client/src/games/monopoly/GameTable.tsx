@@ -146,7 +146,7 @@ export function GameTable() {
         <div className="table-mode">
           <Board game={game} tableMode />
           {/* Alles, womit der Spieler hantiert, an seiner Kante – gedreht. */}
-          <SeatDock edge={edge}>
+          <SeatDock edge={edge} place="hand">
             <div className="dock-head">
               <DicePair dice={game.dice} />
               <MoneyStrip game={game} />

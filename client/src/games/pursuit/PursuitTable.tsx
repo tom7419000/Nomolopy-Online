@@ -226,7 +226,7 @@ export function PursuitTable() {
             {/* Das Rad liegt still. Was sich dreht, ist die Frage – sie ist
                 das, was der Spieler lesen muss. */}
             {tableMode && (
-              <SeatDock edge={rotation}>
+              <SeatDock edge={rotation} place="hand">
                 <PursuitPanel view={view} me={me} local={isLocalGame} actions={actions} />
               </SeatDock>
             )}
