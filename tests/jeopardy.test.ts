@@ -496,12 +496,13 @@ test('Auch die Frage-Kennung verlässt den Server erst bei der Auflösung', () =
  * Der Moderator ist bewusst ein SITZ mit Markierung und kein Raum-Feld –
  * so gelten Host-Rechte, Host-Übergang und Rauswerfen unverändert weiter.
  */
-function show(names = ['Mod', 'Ben', 'Clara']) {
+function show(names = ['Mod', 'Ben', 'Clara'], rules: Partial<typeof DEFAULT_JEOPARDY_RULES> = {}) {
   const state = createJeopardy('TEST', {
     ...DEFAULT_JEOPARDY_RULES,
     packId: PACK.id,
     readSeconds: 0,
     moderated: true,
+    ...rules,
   });
   names.forEach((n, i) => addJeopardyPlayer(state, `p${i}`, n, i === 0));
   const r = startJeopardy(state, PACK, 1000);
@@ -537,14 +538,27 @@ test('Der Moderator wählt die Felder – der Picker nur den Wunsch', () => {
   assert.equal(s.clue!.col, 0);
 });
 
-test('Ohne Moderator-Uhr steht die Frage, bis er den Buzzer aufmacht', () => {
-  const s = show();
-  act(s, 'p0', { type: 'pick', col: 0, row: 0 });
+test('Auch moderiert geht der Buzzer nach der Vorlesezeit von selbst auf', () => {
+  // Die Freigabe an einen Knopf zu hängen war der Fehler: Wer moderiert,
+  // spielt am echten Tisch nebenher mit und hat keine Hand dafür frei.
+  const s = show(undefined, { readSeconds: 10 });
+  act(s, 'p0', { type: 'pick', col: 0, row: 0 }, 1000);
   assert.equal(s.clue!.step, 'reading');
-  assert.equal(s.clue!.deadline, null, 'keine Vorlesezeit – er liest, so lange er braucht');
-  assert.equal(jeopardyTick(s, 9_000_000, PACK), false, 'auch später nicht von selbst');
+  assert.equal(s.clue!.deadline, 11_000, 'die Vorlesezeit läuft');
 
-  assert.equal(act(s, 'p1', { type: 'openBuzzer' }).ok, false, 'ein Mitspieler macht ihn nicht auf');
+  assert.equal(jeopardyTick(s, 10_500, PACK), false, 'vorher passiert nichts');
+  assert.equal(s.clue!.step, 'reading');
+
+  assert.equal(jeopardyTick(s, 11_001, PACK), true, 'ohne dass jemand einen Knopf drückt');
+  assert.equal(s.clue!.step, 'buzzing');
+});
+
+test('Der Moderator kann die Vorlesezeit abkürzen, ein Mitspieler nicht', () => {
+  const s = show(undefined, { readSeconds: 10 });
+  act(s, 'p0', { type: 'pick', col: 0, row: 0 }, 1000);
+
+  assert.equal(act(s, 'p1', { type: 'openBuzzer' }, 2000).ok, false, 'nur er kürzt ab');
+  assert.equal(s.clue!.step, 'reading');
   assert.equal(act(s, 'p0', { type: 'openBuzzer' }, 2000).ok, true);
   assert.equal(s.clue!.step, 'buzzing');
 });

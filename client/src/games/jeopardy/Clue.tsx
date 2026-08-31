@@ -32,6 +32,38 @@ export function Countdown({ deadline, label }: { deadline: number | null; label?
   );
 }
 
+/**
+ * Die Vorlesezeit, groß und unter der Frage.
+ *
+ * Die kleine Uhr oben rechts (`Countdown`) reicht für ein Handy; auf einem
+ * Fernseher quer durch den Raum sieht sie niemand. Und seit der Buzzer von
+ * selbst aufgeht, ist das die einzige Anzeige, die sagt WANN – vorher stand
+ * dort ein Knopf, der es beantwortete.
+ */
+function ReadClock({ deadline, seconds }: { deadline: number | null; seconds: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (deadline === null) return;
+    const t = setInterval(() => setNow(Date.now()), 100);
+    return () => clearInterval(t);
+  }, [deadline]);
+
+  // Am gemeinsamen Gerät tickt keine Uhr – dort öffnet der Vorlesende selbst.
+  if (deadline === null) return <p className="jeo-waiting">Gleich geht der Buzzer auf …</p>;
+
+  const left = Math.max(0, deadline - now);
+  const total = Math.max(1, seconds * 1000);
+  return (
+    <div className={`jeo-readclock ${left < 3000 ? 'urgent' : ''}`} role="timer">
+      <span className="jeo-readclock-num">{Math.ceil(left / 1000)}</span>
+      <span className="jeo-readclock-label">bis der Buzzer aufgeht</span>
+      <span className="jeo-readclock-bar" aria-hidden>
+        <i style={{ width: `${Math.min(100, (left / total) * 100)}%` }} />
+      </span>
+    </div>
+  );
+}
+
 function name(view: JeopardyView, id: string | null): string {
   return view.players.find((p) => p.id === id)?.name ?? '—';
 }
@@ -139,7 +171,7 @@ export function Clue({
       {/* -- Vorlesezeit ------------------------------------------------- */}
       {c.step === 'reading' && (
         <div className="jeo-stage">
-          <p className="hint">Gleich geht der Buzzer auf …</p>
+          <ReadClock deadline={c.deadline} seconds={view.rules.readSeconds} />
           {isPicker && !moderated && (
             <button className="btn" onClick={actions.openBuzzer}>
               🔔 Buzzer sofort öffnen

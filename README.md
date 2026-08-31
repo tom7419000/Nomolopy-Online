@@ -39,7 +39,7 @@ LAN einfach `http://<deine-IP>:3001` an die Mitspieler geben. Port per `PORT`,
 Datenverzeichnis (Editionen/Spielstände) per `DATA_DIR` konfigurierbar.
 
 ```bash
-npm test                                    # Unit-Tests aller Spiele und des lokalen Raums (176 Tests)
+npm test                                    # Unit-Tests aller Spiele und des lokalen Raums (177 Tests)
 npm run typecheck
 npm run build && npm run test:e2e           # Browser-E2E: Monopoly inkl. Auktion (Playwright)
 npm run build && npm run test:e2e:poker     # Browser-E2E: Poker inkl. Karten-Redaction
@@ -297,8 +297,12 @@ für das Jeopardy gemacht ist:
   zusätzliches Zuschauergerät, sondern sein eigenes.
 - **Er wählt die Felder.** Wer richtig lag, darf sich weiterhin eins wünschen —
   das steht ihm oben als Hinweis da, angeklickt wird es von ihm.
-- **Er liest vor und macht den Buzzer auf.** Die Vorlesezeit-Uhr entfällt: Die
-  Frage steht, so lange er braucht.
+- **Er liest vor, der Buzzer geht von selbst auf.** Unter der Frage läuft ein
+  großer Countdown (Vorgabe 10 Sekunden, in der Lobby einstellbar); danach ist
+  der Buzzer offen. Wer schneller fertig vorgelesen hat, kürzt mit
+  „🔔 Sofort öffnen" ab. Die Freigabe an einen Knopfdruck zu hängen wäre am
+  echten Spieltisch eine Handbremse: Wer moderiert, spielt meist nebenher mit
+  und hat keine Hand dafür frei.
 - **Er wertet allein**, mit ✓ und ✗ in der Leiste unten und dem
   Vorschlag vorausgewählt. Die Abstimmung unter den Mitspielern entfällt.
 - **Er bekommt keine Punkte**, hat keinen Buzzer, steht nicht in der
@@ -505,7 +509,7 @@ tests/
   poker.test.ts       19 Unit-Tests Poker (Rankings, Side-Pots, Blinds, Timeouts)
   local-room.test.ts  27 Unit-Tests lokaler Raum: Sitzrotation, Klon-Vertrag, Redaction
   trivia.test.ts      18 Unit-Tests Fragenformat, Ablenker, mitgeliefertes Paket
-  jeopardy.test.ts    39 Unit-Tests Jeopardy: Buzzer-Rennen, Sperre, Wertung, Moderator
+  jeopardy.test.ts    40 Unit-Tests Jeopardy: Buzzer-Rennen, Sperre, Wertung, Moderator
   pursuit.test.ts     43 Unit-Tests Trivial Pursuit: Wegenetz, Bewegung, Käse, Finale
   e2e.ts              Browser-E2E Monopoly: 2 Spieler, Link-Beitritt, echtes Spiel
   e2e-poker.ts        Browser-E2E Poker: Showdown, Raise/Fold, Redaction, Zuschauer

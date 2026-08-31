@@ -1952,6 +1952,38 @@ button,
   .jeo-cell { font-size: 1rem; }
 }
 
+/* -- Die Vorlesezeit, groß unter der Frage -------------------------------- */
+
+.jeo-readclock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: min(100%, 420px);
+}
+.jeo-readclock-num {
+  font-size: clamp(2.2rem, 7vw, 3.4rem);
+  font-weight: 900;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: #ffd15c;
+}
+.jeo-readclock-label { color: var(--text-dim); font-size: 0.85rem; }
+.jeo-readclock-bar {
+  width: 100%;
+  height: 8px;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+/* Kein `transition`: der Balken wird alle 100 ms neu gesetzt, eine Animation
+   darüber liefe der Uhr hinterher statt mit ihr. */
+.jeo-readclock-bar i { display: block; height: 100%; background: #ffd15c; }
+.jeo-readclock.urgent .jeo-readclock-num,
+.jeo-readclock.urgent .jeo-readclock-bar i { color: #ff6b6b; background: #ff6b6b; }
+
 /* -- Präsentation: der Moderator führt durch die Sendung ------------------ */
 
 /* Der Moderator hat den großen Bildschirm für sich: keine Seitenspalte, kein
@@ -1985,6 +2017,11 @@ button,
 /* `.jeo-stage` schiebt sich sonst mit `margin-top: auto` nach unten und
    reißt zwischen Frage und Antwort ein Loch quer über den Fernseher. */
 .jeopardy-layout.presenting .jeo-stage { margin-top: 0; }
+/* Am Fernseher ist der Countdown die einzige Ansage, wann es losgeht. */
+.jeopardy-layout.presenting .jeo-readclock { width: min(100%, 620px); }
+.jeopardy-layout.presenting .jeo-readclock-num { font-size: clamp(3.5rem, 11vw, 8rem); }
+.jeopardy-layout.presenting .jeo-readclock-label { font-size: 1.1rem; }
+.jeopardy-layout.presenting .jeo-readclock-bar { height: 14px; }
 .jeopardy-layout.presenting .jeo-cell { font-size: clamp(1.2rem, 3vw, 2.6rem); }
 .jeopardy-layout.presenting .jeo-cat { font-size: 0.95rem; }
 .jeopardy-layout.presenting .jeo-cat > span:first-child { font-size: 1.7rem; }

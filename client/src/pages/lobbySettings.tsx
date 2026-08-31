@@ -221,9 +221,7 @@ export function JeopardySettings({ isHost }: { isHost: boolean }) {
 
       <div className="rules-list">
         {numberRow('Punkte für die erste Zeile', 'baseValue')}
-        {/* Moderiert liest der Moderator vor und macht den Buzzer selbst
-            auf – eine Vorlesezeit gäbe es dann gar nicht. */}
-        {!rules.moderated && numberRow('Vorlesezeit vor dem Buzzer (Sek.)', 'readSeconds')}
+        {numberRow('Vorlesezeit vor dem Buzzer (Sek.)', 'readSeconds')}
         {numberRow('Buzzer offen für … Sek.', 'buzzSeconds')}
         {numberRow('Bedenkzeit zum Antworten (Sek.)', 'answerSeconds')}
         {numberRow('Zeit zum Werten (Sek.)', 'judgeSeconds')}

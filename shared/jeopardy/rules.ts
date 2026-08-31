@@ -8,7 +8,10 @@ export const JEOPARDY_MAX_PLAYERS = 8;
 export const DEFAULT_JEOPARDY_RULES: JeopardyRules = {
   packId: 'standard-de',
   baseValue: 100,
-  readSeconds: 5,
+  // Vorgelesen dauert länger als selbst gelesen – und auch am Handy waren
+  // fünf Sekunden knapp, um eine Frage überhaupt zu Ende zu lesen. In der
+  // Lobby ist der Wert von 0 bis 20 einstellbar.
+  readSeconds: 10,
   buzzSeconds: 20,
   answerSeconds: 25,
   judgeSeconds: 20,

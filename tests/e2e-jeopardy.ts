@@ -395,6 +395,16 @@ async function main() {
     }
     // Zwei Mitspieler genügen, obwohl drei Leute im Raum sind.
     await mod.getByRole('heading', { name: /Spieler \(2\// }).waitFor();
+
+    // Die Vorlesezeit steuert, wann der Buzzer von selbst aufgeht. In
+    // Schritt 8 war die Zeile moderiert versteckt, weil sie wirkungslos
+    // war – jetzt ist sie genau der Knopf dafür und muss wieder da sein.
+    const modRead = mod.locator('.rule-row', { hasText: 'Vorlesezeit' }).locator('input');
+    if ((await modRead.count()) !== 1) fail('Moderiert fehlt die Vorlesezeit in der Lobby.');
+    await modRead.fill('5');
+    await modRead.blur();
+    await pageC.locator('.rule-row', { hasText: 'Vorlesezeit' }).locator('input[value="5"]').waitFor();
+
     await mod.getByRole('button', { name: '▶ Spiel starten' }).click();
     for (const p of [mod, pageC, pageD]) await p.locator('.game-table.jeopardy').waitFor();
 
@@ -423,19 +433,26 @@ async function main() {
     for (const p of [mod, pageC, pageD]) await p.locator('.jeo-prompt').waitFor();
     console.log('✔ Nur der Moderator wählt – die Frage steht danach auf allen drei Geräten');
 
-    // --- Er liest vor und macht den Buzzer auf -------------------------------
-    // Ohne Vorlesezeit-Uhr: die Frage steht, bis er den Knopf drückt.
+    // --- Er liest vor, und der Buzzer geht von selbst auf --------------------
+    //
+    // Der Punkt von Schritt 8b: Wer moderiert, spielt am echten Tisch
+    // nebenher mit und hat keine Hand für eine Freigabe frei. Stünde der
+    // Buzzer still, bis jemand ihn öffnet, stockte jede einzelne Frage.
+    for (const p of [mod, pageC, pageD]) await p.locator('.jeo-readclock').waitFor();
     for (const [label, p] of [['Cara', pageC], ['Dora', pageD]] as const) {
       if (await p.locator('.jeo-buzzer').isVisible().catch(() => false)) {
-        fail(`${label} kann buzzern, bevor der Moderator vorgelesen hat.`);
+        fail(`${label} kann buzzern, während noch vorgelesen wird.`);
       }
     }
-    await mod.locator('.jeo-moderator-bar').getByRole('button', { name: '🔔 Buzzer öffnen' }).click();
-    for (const p of guests) await p.locator('.jeo-buzzer').waitFor();
+    console.log('✔ Der Countdown steht auf allen drei Geräten, der Buzzer ist noch zu');
+    await mod.screenshot({ path: `${SHOTS}/jeopardy-05b-countdown.png` });
+
+    // Und jetzt klickt niemand irgendwo – die Uhr macht das allein.
+    for (const p of guests) await p.locator('.jeo-buzzer').waitFor({ timeout: 12_000 });
     if (await mod.locator('.jeo-buzzer').isVisible().catch(() => false)) {
       fail('Der Moderator hat einen eigenen Buzzer bekommen.');
     }
-    console.log('✔ Erst auf sein Kommando geht der Buzzer auf – und er selbst hat keinen');
+    console.log('✔ Nach der Vorlesezeit geht der Buzzer von selbst auf – ohne Knopfdruck');
 
     // --- Er wertet allein ----------------------------------------------------
     await pageC.locator('.jeo-buzzer').click();
@@ -470,6 +487,13 @@ async function main() {
     await mod.locator('.jeo-board').waitFor();
     await mod.getByText('29 von 30 Feldern offen').waitFor();
     console.log('✔ Nur er schaltet zurück zum Brett');
+
+    // --- Der Knopf bleibt, aber als Abkürzung --------------------------------
+    await mod.locator('.jeo-col').first().locator('.jeo-cell').nth(1).click();
+    await mod.locator('.jeo-readclock').waitFor();
+    await mod.locator('.jeo-moderator-bar').getByRole('button', { name: '🔔 Sofort öffnen' }).click();
+    for (const p of guests) await p.locator('.jeo-buzzer').waitFor();
+    console.log('✔ … und wer schneller fertig vorgelesen hat, kürzt mit „Sofort öffnen" ab');
 
     await browser.close();
     console.log('\n🎉 Jeopardy-E2E erfolgreich – Screenshots in ' + SHOTS);

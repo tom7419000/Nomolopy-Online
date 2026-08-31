@@ -83,7 +83,8 @@ export function JeopardyTable() {
   const clue = view.clue;
   const picker = view.players[view.pickerIndex];
   // Moderiert wird die Sendung von einem, der nicht mitspielt: er wählt die
-  // Felder, öffnet den Buzzer und wertet.
+  // Felder, liest vor und wertet. Den Buzzer macht die Vorlesezeit auf – er
+  // kann sie nur abkürzen.
   const moderator = view.players.find((p) => p.moderator && p.connected) ?? null;
   const iModerate = !!me?.moderator;
   const isPicker = iModerate || (!moderator && (isLocalGame || (!!me && picker?.id === me.id)));
@@ -222,7 +223,7 @@ export function JeopardyTable() {
             <div className="jeo-moderator-hint">
               🎙 Du moderierst.{' '}
               {clue
-                ? 'Lies vor, öffne den Buzzer und werte.'
+                ? 'Lies vor – der Buzzer geht von selbst auf. Werten tust du.'
                 : `${picker?.name ?? 'Wer dran ist'} darf sich ein Feld wünschen – tipp es an.`}
             </div>
           )}
@@ -318,9 +319,14 @@ export function JeopardyTable() {
       {iModerate && clue && view.phase === 'playing' && (
         <div className="jeo-moderator-bar">
           {clue.step === 'reading' && (
-            <button className="btn primary big" onClick={actions.openBuzzer}>
-              🔔 Buzzer öffnen
-            </button>
+            <>
+              {/* Der Buzzer geht nach der Vorlesezeit von selbst auf – der
+                  Knopf ist die Abkürzung für den, der schneller fertig ist. */}
+              <span className="hint">Der Buzzer geht gleich von selbst auf.</span>
+              <button className="btn big" onClick={actions.openBuzzer}>
+                🔔 Sofort öffnen
+              </button>
+            </>
           )}
           {clue.step === 'buzzing' && (
             <>

@@ -336,11 +336,11 @@ function doPick(
   state.usedQuestionIds.push(q.id);
 
   const value = (row + 1) * state.rules.baseValue;
-  // Mit Moderator liest ER vor, und zwar so lange er braucht: die Frage
-  // bleibt ohne Uhr im Lesen stehen, bis er den Buzzer aufmacht. Eine
-  // Vorlesezeit redete ihm mitten im Satz dazwischen.
-  const mod = moderatorOf(state);
-  const reading = mod !== null || (state.rules.readSeconds > 0 && !state.local);
+  // Die Vorlesezeit läuft auch moderiert. Sie an einen Knopf zu hängen war
+  // ein Fehler: Wer moderiert, spielt am echten Tisch nebenher mit und hat
+  // keine Hand für eine Freigabe – die Sendung stockte dann bei jeder Frage.
+  // Der Knopf bleibt, aber als Abkürzung (`doOpenBuzzer`), nicht als Pflicht.
+  const reading = state.rules.readSeconds > 0 && !state.local;
   state.clue = {
     col,
     row,
@@ -359,11 +359,9 @@ function doPick(
     lockedOut: [],
     votes: {},
     correct: null,
-    deadline: mod
-      ? null
-      : reading
-        ? secondsFrom(state, now, state.rules.readSeconds)
-        : secondsFrom(state, now, state.rules.buzzSeconds),
+    deadline: reading
+      ? secondsFrom(state, now, state.rules.readSeconds)
+      : secondsFrom(state, now, state.rules.buzzSeconds),
   };
 
   const who = state.players.find((p) => p.id === playerId);
