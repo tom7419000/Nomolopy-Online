@@ -50,6 +50,14 @@ export interface JeopardyRules {
   judgeSeconds: number;
   /** Kostet eine falsche Antwort Punkte? (Originalregel: ja) */
   penalty: boolean;
+  /**
+   * Der Ersteller moderiert, statt mitzuspielen.
+   *
+   * Das ist der Fernseh-Modus: ein großer Bildschirm zeigt Brett und Frage,
+   * die Spieler buzzern am Handy, und der Moderator führt durch die Sendung –
+   * er wählt die Felder, öffnet den Buzzer und wertet.
+   */
+  moderated: boolean;
 }
 
 export interface JeopardyPlayer {
@@ -61,6 +69,8 @@ export interface JeopardyPlayer {
   isHost: boolean;
   connected: boolean;
   score: number;
+  /** Moderiert nur: kein Punktestand, kein Buzzer, zählt nicht als Mitspieler. */
+  moderator: boolean;
 }
 
 /** Eine Spalte des Bretts: eine Kategorie mit fünf Feldern. */

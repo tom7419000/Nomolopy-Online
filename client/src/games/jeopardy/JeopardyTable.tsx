@@ -82,11 +82,15 @@ export function JeopardyTable() {
   const isSpectator = !me;
   const clue = view.clue;
   const picker = view.players[view.pickerIndex];
-  const isPicker = isLocalGame || (!!me && picker?.id === me.id);
+  // Moderiert wird die Sendung von einem, der nicht mitspielt: er wählt die
+  // Felder, öffnet den Buzzer und wertet.
+  const moderator = view.players.find((p) => p.moderator && p.connected) ?? null;
+  const iModerate = !!me?.moderator;
+  const isPicker = iModerate || (!moderator && (isLocalGame || (!!me && picker?.id === me.id)));
 
   // Zuschauer sind der große Bildschirm; am geteilten Gerät sitzen alle
-  // davor. Spieler dürfen umschalten, wenn sie auf einem Laptop sitzen.
-  const boardView = isLocalGame || isSpectator || showBoard;
+  // davor. Der Moderator startet direkt in der Präsentation.
+  const boardView = isLocalGame || isSpectator || iModerate || showBoard;
 
   /**
    * Reaktionszeit messen.
@@ -211,19 +215,30 @@ export function JeopardyTable() {
         </div>
       </header>
 
-      <div className="game-layout jeopardy-layout">
+      <div className={`game-layout jeopardy-layout ${iModerate ? 'presenting' : ''}`}>
         <main className={`jeo-main ${boardView ? 'board-view' : 'player-view'}`}>
           {isSpectator && <div className="spectator-banner">🖥 Brett-Ansicht – du schaust zu</div>}
+          {iModerate && (
+            <div className="jeo-moderator-hint">
+              🎙 Du moderierst.{' '}
+              {clue
+                ? 'Lies vor, öffne den Buzzer und werte.'
+                : `${picker?.name ?? 'Wer dran ist'} darf sich ein Feld wünschen – tipp es an.`}
+            </div>
+          )}
 
           {boardView ? (
             <>
               {clue ? (
                 <Clue
                   view={view}
-                  me={me}
+                  // Der Moderator bekommt weder Buzzer noch Antwortfeld: er
+                  // spielt nicht mit, er führt.
+                  me={iModerate ? undefined : me}
                   layout="board"
                   local={isLocalGame}
-                  isPicker={isPicker}
+                  isPicker={iModerate ? false : isPicker}
+                  moderated={!!moderator}
                   actions={actions}
                 />
               ) : (
@@ -243,6 +258,7 @@ export function JeopardyTable() {
               layout="player"
               local={false}
               isPicker={isPicker}
+              moderated={!!moderator}
               actions={actions}
             />
           ) : isPicker ? (
@@ -296,6 +312,51 @@ export function JeopardyTable() {
           <div className="reconnect-box">
             <span className="spinner" /> Verbindung unterbrochen – stelle wieder her …
           </div>
+        </div>
+      )}
+
+      {iModerate && clue && view.phase === 'playing' && (
+        <div className="jeo-moderator-bar">
+          {clue.step === 'reading' && (
+            <button className="btn primary big" onClick={actions.openBuzzer}>
+              🔔 Buzzer öffnen
+            </button>
+          )}
+          {clue.step === 'buzzing' && (
+            <>
+              <span className="hint">Buzzer offen …</span>
+              <button className="btn" onClick={actions.skip}>
+                Niemand weiß es – auflösen
+              </button>
+            </>
+          )}
+          {clue.step === 'answering' && (
+            <span className="hint">{view.players.find((p) => p.id === clue.answererId)?.name} antwortet …</span>
+          )}
+          {clue.step === 'judging' && (
+            <>
+              <span className="jeo-mod-answer">
+                „{clue.submitted || '—'}"
+              </span>
+              <button
+                className={`btn big ${clue.suggestion === true ? 'primary' : ''}`}
+                onClick={() => actions.judge(true)}
+              >
+                ✓ Richtig
+              </button>
+              <button
+                className={`btn big ${clue.suggestion === false ? 'primary' : ''}`}
+                onClick={() => actions.judge(false)}
+              >
+                ✗ Falsch
+              </button>
+            </>
+          )}
+          {clue.step === 'revealed' && (
+            <button className="btn primary big" onClick={actions.next}>
+              Weiter zum Brett
+            </button>
+          )}
         </div>
       )}
 

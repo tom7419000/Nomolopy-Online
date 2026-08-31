@@ -93,6 +93,7 @@ export const pokerModule: GameModule<'poker'> = {
       connected: p.connected,
       eliminated: p.out,
       avatar: p.avatar,
+      moderator: false,
     }));
   },
 
@@ -121,6 +122,7 @@ export const pokerModule: GameModule<'poker'> = {
       connected: next.connected,
       eliminated: next.out,
       avatar: next.avatar,
+      moderator: false,
     };
   },
 

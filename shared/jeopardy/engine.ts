@@ -134,16 +134,21 @@ export function addJeopardyPlayer(
   const usedColors = new Set(state.players.map((p) => p.color));
   const usedAvatars = new Set(state.players.map((p) => p.avatar));
   const i = state.players.length;
+  // Nur der Ersteller moderiert, und nur wenn der Raum so angelegt wurde.
+  const moderator = state.rules.moderated && isHost && i === 0;
   state.players.push({
     id,
     name,
     color: PLAYER_COLORS.find((c) => !usedColors.has(c)) ?? PLAYER_COLORS[i % PLAYER_COLORS.length],
-    avatar: JEOPARDY_AVATARS.find((a) => !usedAvatars.has(a)) ?? JEOPARDY_AVATARS[i % JEOPARDY_AVATARS.length],
+    avatar: moderator
+      ? '🎙'
+      : JEOPARDY_AVATARS.find((a) => !usedAvatars.has(a)) ?? JEOPARDY_AVATARS[i % JEOPARDY_AVATARS.length],
     isHost,
     connected: true,
     score: 0,
+    moderator,
   });
-  jeopardyLog(state, 'system', `${name} ist dabei.`, id);
+  jeopardyLog(state, 'system', moderator ? `🎙 ${name} moderiert.` : `${name} ist dabei.`, id);
   return ok;
 }
 
@@ -174,8 +179,9 @@ export function startJeopardy(
   now = Date.now()
 ): JeopardyResult {
   if (state.phase !== 'lobby') return err('Das Spiel läuft bereits.');
-  if (state.players.length < JEOPARDY_MIN_PLAYERS) {
-    return err(`Mindestens ${JEOPARDY_MIN_PLAYERS} Spieler nötig.`);
+  // Der Moderator zählt nicht mit – er spielt ja nicht.
+  if (contestants(state).length < JEOPARDY_MIN_PLAYERS) {
+    return err(`Mindestens ${JEOPARDY_MIN_PLAYERS} Mitspieler nötig.`);
   }
   if (!pack) return err('Das gewählte Fragenpaket gibt es nicht mehr.');
 
@@ -196,10 +202,17 @@ export function startJeopardy(
   state.clue = null;
   state.winnerId = null;
   for (const p of state.players) p.score = 0;
-  state.pickerIndex = Math.floor(Math.random() * state.players.length);
+  const first = contestants(state)[Math.floor(Math.random() * contestants(state).length)];
+  setPicker(state, first.id);
 
   jeopardyLog(state, 'system', `🎯 Jeopardy gestartet – Fragen aus „${pack.name}".`);
-  jeopardyLog(state, 'info', `${state.players[state.pickerIndex].name} wählt das erste Feld.`);
+  jeopardyLog(
+    state,
+    'info',
+    moderatorOf(state)
+      ? `${moderatorOf(state)!.name} moderiert. ${first.name} darf sich das erste Feld wünschen.`
+      : `${first.name} wählt das erste Feld.`
+  );
   return ok;
 }
 
@@ -227,27 +240,52 @@ function setPicker(state: JeopardyState, playerId: string): void {
 }
 
 /**
+ * Der Moderator, sofern er da ist.
+ *
+ * Ist er getrennt, gelten wieder die normalen Regeln – sonst stünde die
+ * Sendung still, weil nur er ein Feld wählen dürfte.
+ */
+export function moderatorOf(state: JeopardyState): JeopardyPlayer | null {
+  return state.players.find((p) => p.moderator && p.connected) ?? null;
+}
+
+/** Die Mitspielenden – ohne den Moderator. */
+function contestants(state: JeopardyState): JeopardyPlayer[] {
+  return state.players.filter((p) => !p.moderator);
+}
+
+/**
  * Wer darf ein Feld wählen?
  *
- * Normalerweise nur der Picker. Ist der aber getrennt, darf jeder – sonst
- * stünde die Partie still, und anders als bei einem laufenden Zug gibt es
- * hier keine Uhr, die das auflösen könnte.
+ * Gibt es einen Moderator, führt er durch die Sendung und wählt allein.
+ * Sonst der Picker – und ist DER getrennt, darf jeder, sonst stünde die
+ * Partie still (anders als bei einem laufenden Zug gibt es hier keine Uhr,
+ * die das auflösen könnte).
  */
 function canPick(state: JeopardyState, playerId: string): boolean {
+  const mod = moderatorOf(state);
+  if (mod) return mod.id === playerId;
   const p = picker(state);
   if (!p) return false;
   if (p.id === playerId) return true;
   return !p.connected && state.players.some((x) => x.id === playerId);
 }
 
-/** Wer bei dieser Frage noch buzzern darf. */
+/** Wer bei dieser Frage noch buzzern darf – der Moderator nie. */
 function eligibleBuzzers(state: JeopardyState, clue: JeopardyClue): JeopardyPlayer[] {
-  return state.players.filter((p) => p.connected && !clue.lockedOut.includes(p.id));
+  return contestants(state).filter((p) => p.connected && !clue.lockedOut.includes(p.id));
 }
 
-/** Wer werten darf: alle Verbundenen außer dem, der geantwortet hat. */
+/**
+ * Wer werten darf: alle Verbundenen außer dem, der geantwortet hat.
+ *
+ * Mit Moderator wertet ER allein – das ist das Sendungsformat und spart die
+ * Abstimmungsrunde.
+ */
 function eligibleJudges(state: JeopardyState, clue: JeopardyClue): JeopardyPlayer[] {
-  return state.players.filter((p) => p.connected && p.id !== clue.answererId);
+  const mod = moderatorOf(state);
+  if (mod) return [mod];
+  return contestants(state).filter((p) => p.connected && p.id !== clue.answererId);
 }
 
 function secondsFrom(state: JeopardyState, now: number, seconds: number): number | null {
@@ -298,7 +336,11 @@ function doPick(
   state.usedQuestionIds.push(q.id);
 
   const value = (row + 1) * state.rules.baseValue;
-  const reading = state.rules.readSeconds > 0 && !state.local;
+  // Mit Moderator liest ER vor, und zwar so lange er braucht: die Frage
+  // bleibt ohne Uhr im Lesen stehen, bis er den Buzzer aufmacht. Eine
+  // Vorlesezeit redete ihm mitten im Satz dazwischen.
+  const mod = moderatorOf(state);
+  const reading = mod !== null || (state.rules.readSeconds > 0 && !state.local);
   state.clue = {
     col,
     row,
@@ -317,9 +359,11 @@ function doPick(
     lockedOut: [],
     votes: {},
     correct: null,
-    deadline: reading
-      ? secondsFrom(state, now, state.rules.readSeconds)
-      : secondsFrom(state, now, state.rules.buzzSeconds),
+    deadline: mod
+      ? null
+      : reading
+        ? secondsFrom(state, now, state.rules.readSeconds)
+        : secondsFrom(state, now, state.rules.buzzSeconds),
   };
 
   const who = state.players.find((p) => p.id === playerId);
@@ -333,10 +377,13 @@ function doPick(
 }
 
 /** Vorlesezeit abkürzen – wer vorgelesen hat, macht den Buzzer auf. */
-function doOpenBuzzer(state: JeopardyState, now: number): JeopardyResult {
+function doOpenBuzzer(state: JeopardyState, playerId: string, now: number): JeopardyResult {
   const c = state.clue;
   if (!c) return err('Es läuft keine Frage.');
   if (c.step !== 'reading') return err('Der Buzzer ist schon offen.');
+  // Mit Moderator liest er vor und entscheidet, wann der Buzzer aufgeht.
+  const mod = moderatorOf(state);
+  if (mod && mod.id !== playerId) return err(`${mod.name} macht den Buzzer auf.`);
   openBuzzer(state, c, now);
   return ok;
 }
@@ -387,6 +434,7 @@ function doBuzz(
   if (c.lockedOut.includes(playerId)) return err('Du hattest schon einen Versuch.');
   const p = getJeopardyPlayer(state, playerId);
   if (!p) return err('Du spielst nicht mit.');
+  if (p.moderator) return err('Du moderierst – du buzzerst nicht mit.');
   if (playerId in c.buzzes) return err('Schon gebuzzert.');
 
   if (state.local) {
@@ -489,6 +537,11 @@ function doJudge(
   if (c.step !== 'judging') return err('Gerade ist nichts zu werten.');
   if (c.answererId === playerId) return err('Über die eigene Antwort stimmst du nicht ab.');
   if (!getJeopardyPlayer(state, playerId)) return err('Du spielst nicht mit.');
+  // Mit Moderator wertet ER allein. Ohne diese Sperre landete die Stimme
+  // eines Mitspielers zwar in `votes`, würde aber trotzdem mitgezählt –
+  // `eligibleJudges` wartet dann nur noch auf ihn.
+  const mod = moderatorOf(state);
+  if (mod && mod.id !== playerId) return err(`${mod.name} wertet.`);
 
   c.votes[playerId] = correct;
 
@@ -582,10 +635,12 @@ function reveal(
 }
 
 /** Auflösung weg, zurück zum Brett – oder Schluss, wenn alles gespielt ist. */
-function doNext(state: JeopardyState): JeopardyResult {
+function doNext(state: JeopardyState, playerId: string): JeopardyResult {
   const c = state.clue;
   if (!c) return err('Es läuft keine Frage.');
   if (c.step !== 'revealed') return err('Die Frage läuft noch.');
+  const mod = moderatorOf(state);
+  if (mod && mod.id !== playerId) return err(`${mod.name} führt weiter.`);
   state.clue = null;
 
   if (state.board.every((col) => col.used.every(Boolean))) {
@@ -595,7 +650,7 @@ function doNext(state: JeopardyState): JeopardyResult {
   // Ein getrennter Picker würde das Brett blockieren – dann rückt der
   // nächste Verbundene nach.
   if (!picker(state)?.connected) {
-    const next = state.players.findIndex((p) => p.connected);
+    const next = state.players.findIndex((p) => p.connected && !p.moderator);
     if (next >= 0) state.pickerIndex = next;
   }
   jeopardyLog(state, 'info', `${picker(state)?.name ?? '?'} wählt.`);
@@ -605,7 +660,7 @@ function doNext(state: JeopardyState): JeopardyResult {
 function finish(state: JeopardyState): void {
   state.phase = 'ended';
   state.clue = null;
-  const best = [...state.players].sort((a, b) => b.score - a.score);
+  const best = contestants(state).sort((a, b) => b.score - a.score);
   state.winnerId = best[0]?.id ?? null;
   jeopardyLog(
     state,
@@ -662,7 +717,8 @@ export function jeopardyTick(state: JeopardyState, now: number, pack: TriviaPack
       settleJudging(state, pack, now);
       return true;
     case 'revealed':
-      doNext(state);
+      // Die Uhr handelt für die Sendung: sie hat immer das Recht.
+      doNext(state, moderatorOf(state)?.id ?? state.players[state.pickerIndex]?.id ?? '');
       return true;
   }
 }
@@ -727,7 +783,7 @@ export function applyJeopardyAction(
     case 'pick':
       return doPick(state, playerId, Number(action.col), Number(action.row), pack, now);
     case 'openBuzzer':
-      return doOpenBuzzer(state, now);
+      return doOpenBuzzer(state, playerId, now);
     case 'buzz':
       return doBuzz(state, playerId, action.reactionMs, now);
     case 'answer':
@@ -737,7 +793,7 @@ export function applyJeopardyAction(
     case 'skip':
       return doSkip(state, playerId, pack, now);
     case 'next':
-      return doNext(state);
+      return doNext(state, playerId);
     case 'endGame': {
       if (!getJeopardyPlayer(state, playerId)?.isHost) return err('Nur der Host kann die Partie beenden.');
       finish(state);
@@ -750,8 +806,11 @@ export function applyJeopardyAction(
       if (target.connected) return err('Nur getrennte Spieler lassen sich entfernen.');
       state.players = state.players.filter((p) => p.id !== target.id);
       jeopardyLog(state, 'system', `${target.name} wurde entfernt.`);
-      if (state.players.length < JEOPARDY_MIN_PLAYERS) finish(state);
-      else if (state.pickerIndex >= state.players.length) state.pickerIndex = 0;
+      if (contestants(state).length < JEOPARDY_MIN_PLAYERS) finish(state);
+      else if (state.pickerIndex >= state.players.length) {
+        // Nicht auf 0 – da sitzt bei einer moderierten Sendung der Moderator.
+        state.pickerIndex = Math.max(0, state.players.findIndex((p) => !p.moderator));
+      }
       return ok;
     }
     default:

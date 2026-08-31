@@ -221,7 +221,9 @@ export function JeopardySettings({ isHost }: { isHost: boolean }) {
 
       <div className="rules-list">
         {numberRow('Punkte für die erste Zeile', 'baseValue')}
-        {numberRow('Vorlesezeit vor dem Buzzer (Sek.)', 'readSeconds')}
+        {/* Moderiert liest der Moderator vor und macht den Buzzer selbst
+            auf – eine Vorlesezeit gäbe es dann gar nicht. */}
+        {!rules.moderated && numberRow('Vorlesezeit vor dem Buzzer (Sek.)', 'readSeconds')}
         {numberRow('Buzzer offen für … Sek.', 'buzzSeconds')}
         {numberRow('Bedenkzeit zum Antworten (Sek.)', 'answerSeconds')}
         {numberRow('Zeit zum Werten (Sek.)', 'judgeSeconds')}
@@ -237,8 +239,9 @@ export function JeopardySettings({ isHost }: { isHost: boolean }) {
       </div>
 
       <p className="hint">
-        🖥 Ein weiteres Gerät kann mit demselben Code beitreten und zeigt dann das
-        Brett groß – die Spieler buzzern mit dem Handy.
+        {rules.moderated
+          ? '🎙 Moderierte Sendung: Der Bildschirm des Moderators zeigt Brett und Frage groß, er wählt die Felder, öffnet den Buzzer und wertet. Die Spieler brauchen nur ihr Handy.'
+          : '🖥 Ein weiteres Gerät kann mit demselben Code beitreten und zeigt dann das Brett groß – die Spieler buzzern mit dem Handy.'}
       </p>
 
       {isHost && (

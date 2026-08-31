@@ -13,6 +13,7 @@ export const DEFAULT_JEOPARDY_RULES: JeopardyRules = {
   answerSeconds: 25,
   judgeSeconds: 20,
   penalty: true,
+  moderated: false,
 };
 
 export const JEOPARDY_LIMITS = {
@@ -70,5 +71,6 @@ export function sanitizeJeopardyRules(input: unknown): JeopardyRules {
     answerSeconds: num(raw.answerSeconds, D.answerSeconds, L.answerSeconds.min, L.answerSeconds.max, L.answerSeconds.step),
     judgeSeconds: num(raw.judgeSeconds, D.judgeSeconds, L.judgeSeconds.min, L.judgeSeconds.max, L.judgeSeconds.step),
     penalty: Boolean(raw.penalty ?? D.penalty),
+    moderated: Boolean(raw.moderated ?? D.moderated),
   };
 }

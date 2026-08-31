@@ -32,6 +32,16 @@ export interface SeatInfo {
   eliminated: boolean;
   /** Spielfigur bzw. Avatar als Emoji – wie das Spiel seine Leute zeigt. */
   avatar: string;
+  /**
+   * Moderiert nur, spielt nicht mit.
+   *
+   * Absichtlich ein SITZ mit Markierung statt eines Raum-Feldes: so gelten
+   * Host-Rechte, Host-Übergang, Rauswerfen und die öffentliche Raumliste
+   * unverändert weiter – sie hängen alle daran, dass der Host in `seats()`
+   * steht. Was der Moderator nicht tut, entscheidet das Spiel: keine Punkte,
+   * kein Buzzer, zählt nicht zur Mindestspielerzahl.
+   */
+  moderator: boolean;
 }
 
 export interface ChatAuthor {

@@ -98,6 +98,7 @@ export function Clue({
   layout,
   local,
   isPicker,
+  moderated,
   actions,
 }: {
   view: JeopardyView;
@@ -105,6 +106,12 @@ export function Clue({
   layout: 'board' | 'player';
   local: boolean;
   isPicker: boolean;
+  /**
+   * Führt ein Moderator durch die Sendung? Dann liegen Buzzer öffnen,
+   * Auflösen, Werten und Weiter in SEINER Leiste – hier wären sie doppelt,
+   * und für alle anderen liefen sie ohnehin in eine Absage.
+   */
+  moderated?: boolean;
   actions: ClueActions;
 }) {
   const c = view.clue;
@@ -133,7 +140,7 @@ export function Clue({
       {c.step === 'reading' && (
         <div className="jeo-stage">
           <p className="hint">Gleich geht der Buzzer auf …</p>
-          {isPicker && (
+          {isPicker && !moderated && (
             <button className="btn" onClick={actions.openBuzzer}>
               🔔 Buzzer sofort öffnen
             </button>
@@ -185,7 +192,7 @@ export function Clue({
           {c.lockedOut.length > 0 && (
             <p className="hint">Raus: {c.lockedOut.map((id) => name(view, id)).join(', ')}</p>
           )}
-          {isPicker && (
+          {isPicker && !moderated && (
             <button className="btn ghost" onClick={actions.skip}>
               Niemand weiß es – auflösen
             </button>
@@ -218,7 +225,7 @@ export function Clue({
             <span className="hint">{name(view, c.answererId)} sagt:</span>
             <strong>{c.submitted || '—'}</strong>
           </p>
-          {iMayJudge || local ? (
+          {(iMayJudge && !moderated) || local ? (
             <>
               <p className="hint">
                 {c.suggestion === null
@@ -246,7 +253,9 @@ export function Clue({
               </p>
             </>
           ) : (
-            <p className="jeo-waiting">Die anderen werten gerade …</p>
+            <p className="jeo-waiting">
+              {moderated ? 'Der Moderator wertet …' : 'Die anderen werten gerade …'}
+            </p>
           )}
         </div>
       )}
@@ -261,9 +270,11 @@ export function Clue({
             <span className="hint">Richtig ist:</span>
             <strong>{c.answer}</strong>
           </p>
-          <button className="btn primary big" onClick={actions.next}>
-            Weiter zum Brett
-          </button>
+          {!moderated && (
+            <button className="btn primary big" onClick={actions.next}>
+              Weiter zum Brett
+            </button>
+          )}
         </div>
       )}
     </section>

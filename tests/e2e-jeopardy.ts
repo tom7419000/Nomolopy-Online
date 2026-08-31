@@ -349,6 +349,128 @@ async function main() {
     }
     console.log('✔ Ein Tipp wertet, Punkte sind vergeben, aufgelöst wird sofort');
 
+    // --- Moderierte Sendung: Fernseher führt, zwei Handys buzzern ------------
+    //
+    // Der eigentliche Punkt von Schritt 8: der Moderator hat zwar einen Sitz
+    // (daran hängen Host-Rechte und Rauswerfen), spielt aber nicht mit. Er
+    // wählt die Felder, öffnet den Buzzer und wertet allein.
+    const ctxMod = await browser.newContext({ viewport: tv });
+    const ctxC = await browser.newContext({ viewport: phone });
+    const ctxD = await browser.newContext({ viewport: phone });
+    for (const c of [ctxMod, ctxC, ctxD]) c.setDefaultTimeout(15_000);
+    const mod = await ctxMod.newPage();
+    const pageC = await ctxC.newPage();
+    const pageD = await ctxD.newPage();
+    const guests = [pageC, pageD];
+    for (const [label, page] of [
+      ['Mod', mod],
+      ['Cara', pageC],
+      ['Dora', pageD],
+    ] as const) {
+      page.on('pageerror', (e) => fail(`Seite ${label}: JS-Fehler: ${e.message}`));
+    }
+
+    await mod.goto(BASE);
+    await mod.getByPlaceholder('z. B. Alex').fill('Mod');
+    await mod.locator('.game-choice.game-jeopardy').getByRole('button', { name: 'Raum erstellen' }).click();
+    await mod.getByText(/300 Fragen/).waitFor();
+    await mod.locator('.rule-row.boolean', { hasText: 'Ich moderiere nur' }).locator('input').check();
+    await mod.getByRole('button', { name: '🎯 Raum erstellen' }).click();
+    await mod.locator('.room-code strong').waitFor();
+    const showCode = (await mod.locator('.room-code strong').textContent())!.trim();
+
+    // Der Moderator steht in der Liste – aber nicht als Mitspieler.
+    await mod.locator('.lobby-players li', { hasText: 'Mod' }).locator('.badge', { hasText: 'MODERIERT' }).waitFor();
+    await mod.getByRole('heading', { name: /Spieler \(0\// }).waitFor();
+    console.log('✔ Moderierter Raum erstellt – der Moderator zählt nicht als Spieler');
+
+    for (const [name, page] of [
+      ['Cara', pageC],
+      ['Dora', pageD],
+    ] as const) {
+      await page.goto(`${BASE}/#/room/${showCode}`);
+      await page.getByPlaceholder('z. B. Alex').fill(name);
+      await page.getByRole('button', { name: 'Beitreten' }).click();
+      await mod.locator('.lobby-players li', { hasText: name }).waitFor();
+    }
+    // Zwei Mitspieler genügen, obwohl drei Leute im Raum sind.
+    await mod.getByRole('heading', { name: /Spieler \(2\// }).waitFor();
+    await mod.getByRole('button', { name: '▶ Spiel starten' }).click();
+    for (const p of [mod, pageC, pageD]) await p.locator('.game-table.jeopardy').waitFor();
+
+    // --- Der Moderator präsentiert -------------------------------------------
+    await mod.locator('.jeopardy-layout.presenting').waitFor();
+    await mod.locator('.jeo-moderator-hint').waitFor();
+    if (await mod.locator('.side.right').isVisible().catch(() => false)) {
+      fail('In der Präsentation steht noch die Seitenspalte mit dem Chat.');
+    }
+    // Punktetafel ohne den Moderator: er hat keine Punkte, also keine Zeile.
+    const scoreRows = await mod.locator('.jeo-score').count();
+    if (scoreRows !== 2) fail(`Die Punktetafel zeigt ${scoreRows} Zeilen (erwartet 2, ohne den Moderator).`);
+    console.log('✔ Der Moderator präsentiert formatfüllend, ohne eigene Punktezeile');
+    await mod.screenshot({ path: `${SHOTS}/jeopardy-05-presenting.png` });
+
+    // --- Er wählt, nicht die Spieler -----------------------------------------
+    for (const [label, p] of [['Cara', pageC], ['Dora', pageD]] as const) {
+      if ((await p.locator('.jeo-cell:not(:disabled)').count()) !== 0) {
+        fail(`${label} darf ein Feld wählen, obwohl moderiert wird.`);
+      }
+    }
+    if ((await mod.locator('.jeo-cell:not(:disabled)').count()) !== 30) {
+      fail('Der Moderator kann nicht alle Felder wählen.');
+    }
+    await mod.locator('.jeo-col').first().locator('.jeo-cell').first().click();
+    for (const p of [mod, pageC, pageD]) await p.locator('.jeo-prompt').waitFor();
+    console.log('✔ Nur der Moderator wählt – die Frage steht danach auf allen drei Geräten');
+
+    // --- Er liest vor und macht den Buzzer auf -------------------------------
+    // Ohne Vorlesezeit-Uhr: die Frage steht, bis er den Knopf drückt.
+    for (const [label, p] of [['Cara', pageC], ['Dora', pageD]] as const) {
+      if (await p.locator('.jeo-buzzer').isVisible().catch(() => false)) {
+        fail(`${label} kann buzzern, bevor der Moderator vorgelesen hat.`);
+      }
+    }
+    await mod.locator('.jeo-moderator-bar').getByRole('button', { name: '🔔 Buzzer öffnen' }).click();
+    for (const p of guests) await p.locator('.jeo-buzzer').waitFor();
+    if (await mod.locator('.jeo-buzzer').isVisible().catch(() => false)) {
+      fail('Der Moderator hat einen eigenen Buzzer bekommen.');
+    }
+    console.log('✔ Erst auf sein Kommando geht der Buzzer auf – und er selbst hat keinen');
+
+    // --- Er wertet allein ----------------------------------------------------
+    await pageC.locator('.jeo-buzzer').click();
+    const guest = await answererPage(guests);
+    const guestName = guest === pageC ? 'Cara' : 'Dora';
+    await guest.locator('.jeo-answer-form .input').fill('Meine Antwort');
+    await guest.getByRole('button', { name: 'Abschicken' }).click();
+
+    await mod.locator('.jeo-moderator-bar').getByRole('button', { name: '✓ Richtig' }).waitFor();
+    for (const [label, p] of [['Cara', pageC], ['Dora', pageD]] as const) {
+      if (await p.locator('.jeo-judge').isVisible().catch(() => false)) {
+        fail(`${label} darf werten, obwohl der Moderator das tut.`);
+      }
+    }
+    await mod.screenshot({ path: `${SHOTS}/jeopardy-06-judging.png` });
+    await pageD.screenshot({ path: `${SHOTS}/jeopardy-07-phone-watching.png` });
+    await mod.locator('.jeo-moderator-bar').getByRole('button', { name: '✓ Richtig' }).click();
+
+    await mod.locator('.jeo-solution').waitFor();
+    if ((await scoreOf(mod, guestName)) !== 100) {
+      fail(`${guestName} hat ${await scoreOf(mod, guestName)} statt 100 Punkte.`);
+    }
+    console.log(`✔ Der Moderator wertet allein: ${guestName} bekommt 100 Punkte`);
+
+    // --- Und er führt weiter -------------------------------------------------
+    for (const [label, p] of [['Cara', pageC], ['Dora', pageD]] as const) {
+      if (await p.getByRole('button', { name: 'Weiter zum Brett' }).isVisible().catch(() => false)) {
+        fail(`${label} kann die Sendung weiterschalten.`);
+      }
+    }
+    await mod.locator('.jeo-moderator-bar').getByRole('button', { name: 'Weiter zum Brett' }).click();
+    await mod.locator('.jeo-board').waitFor();
+    await mod.getByText('29 von 30 Feldern offen').waitFor();
+    console.log('✔ Nur er schaltet zurück zum Brett');
+
     await browser.close();
     console.log('\n🎉 Jeopardy-E2E erfolgreich – Screenshots in ' + SHOTS);
     stopServer();

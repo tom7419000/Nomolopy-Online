@@ -7,7 +7,7 @@ privaten oder öffentlichen Räumen spielst – aktuell mit vier Spielen:
 |---|---|---|---|
 | 🎲 | **Monopoly** | 2–8 | Originalregeln inkl. Auktionen, eigene Editionen (Berlin, München, USA …), Spielstände |
 | 🃏 | **Texas Hold'em Poker** | 2–9 | No-Limit, steigende Blinds, Side-Pots, Auto-Fold-Timer, Zuschauer-Modus |
-| 🎯 | **Jeopardy** | 2–8 | 300 deutsche Fragen, Brett auf dem Fernseher + Buzzer auf den Handys |
+| 🎯 | **Jeopardy** | 2–8 | 300 deutsche Fragen, Brett auf dem Fernseher + Buzzer auf den Handys, wahlweise mit Moderator |
 | 🧀 | **Trivial Pursuit** | 2–6 | Volles Rad mit 73 Feldern, Käsestücke, Schlussfrage in der Mitte |
 
 React + TypeScript im Frontend, Node.js + Socket.io als serverautoritatives
@@ -39,7 +39,7 @@ LAN einfach `http://<deine-IP>:3001` an die Mitspieler geben. Port per `PORT`,
 Datenverzeichnis (Editionen/Spielstände) per `DATA_DIR` konfigurierbar.
 
 ```bash
-npm test                                    # Unit-Tests aller Spiele und des lokalen Raums (166 Tests)
+npm test                                    # Unit-Tests aller Spiele und des lokalen Raums (176 Tests)
 npm run typecheck
 npm run build && npm run test:e2e           # Browser-E2E: Monopoly inkl. Auktion (Playwright)
 npm run build && npm run test:e2e:poker     # Browser-E2E: Poker inkl. Karten-Redaction
@@ -285,6 +285,36 @@ nichts. Wer am Zug ist, bekommt statt dessen das Brett zum Auswählen.
 Spieler auf einem großen Bildschirm können mit 🖥 / 📱 zwischen beiden
 Ansichten umschalten.
 
+### 🎙 Moderiert: die Sendung mit einem Host
+
+Beim Anlegen des Raums lässt sich **„Ich moderiere nur"** ankreuzen. Dann
+spielt der Ersteller nicht mit, sondern führt durch die Sendung — das Format,
+für das Jeopardy gemacht ist:
+
+- **Sein Bildschirm ist die Sendung.** Keine Seitenspalte, kein Chat: Brett und
+  Punktestände füllen die Fläche, und läuft eine Frage, steht sie
+  formatfüllend in der Mitte. Der Fernseher ist also nicht mehr ein
+  zusätzliches Zuschauergerät, sondern sein eigenes.
+- **Er wählt die Felder.** Wer richtig lag, darf sich weiterhin eins wünschen —
+  das steht ihm oben als Hinweis da, angeklickt wird es von ihm.
+- **Er liest vor und macht den Buzzer auf.** Die Vorlesezeit-Uhr entfällt: Die
+  Frage steht, so lange er braucht.
+- **Er wertet allein**, mit ✓ und ✗ in der Leiste unten und dem
+  Vorschlag vorausgewählt. Die Abstimmung unter den Mitspielern entfällt.
+- **Er bekommt keine Punkte**, hat keinen Buzzer, steht nicht in der
+  Punktetafel und zählt nicht zur Mindestspielerzahl — zwei Mitspieler reichen,
+  auch wenn drei Leute im Raum sind.
+
+Auf den Handys ändert sich nichts: großer Buzzer, Antwortfeld, sonst nichts.
+
+Technisch ist der Moderator **ein Sitz mit einer Markierung** und kein
+Raum-Feld. Das ist Absicht: Host-Rechte, Host-Übergang, Rauswerfen und die
+öffentliche Raumliste hängen alle daran, dass der Host in `seats()` steht.
+Was der Moderator *nicht* tut, entscheidet das Spiel, nicht die Plattform.
+
+Trennt er die Verbindung, gelten wieder die normalen Regeln — sonst stünde die
+Sendung still, weil nur er ein Feld wählen dürfte.
+
 ### Das Buzzer-Rennen
 
 „Erste Nachricht gewinnt" bestraft nur das schlechtere WLAN: Der Jitter
@@ -475,12 +505,12 @@ tests/
   poker.test.ts       19 Unit-Tests Poker (Rankings, Side-Pots, Blinds, Timeouts)
   local-room.test.ts  27 Unit-Tests lokaler Raum: Sitzrotation, Klon-Vertrag, Redaction
   trivia.test.ts      18 Unit-Tests Fragenformat, Ablenker, mitgeliefertes Paket
-  jeopardy.test.ts    29 Unit-Tests Jeopardy: Buzzer-Rennen, Sperre, Wertung, Redaktion
+  jeopardy.test.ts    39 Unit-Tests Jeopardy: Buzzer-Rennen, Sperre, Wertung, Moderator
   pursuit.test.ts     43 Unit-Tests Trivial Pursuit: Wegenetz, Bewegung, Käse, Finale
   e2e.ts              Browser-E2E Monopoly: 2 Spieler, Link-Beitritt, echtes Spiel
   e2e-poker.ts        Browser-E2E Poker: Showdown, Raise/Fold, Redaction, Zuschauer
   e2e-local.ts        Browser-E2E Pass & Play – mit abgeschaltetem Netz
-  e2e-jeopardy.ts     Browser-E2E Jeopardy: Fernseher + zwei Handys, dazu lokal
+  e2e-jeopardy.ts     Browser-E2E Jeopardy: Fernseher, Moderator, zwei Handys, lokal
   e2e-pursuit.ts      Browser-E2E Trivial Pursuit: Rad, Käsestück, Freitext lokal
 ```
 

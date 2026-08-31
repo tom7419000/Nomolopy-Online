@@ -51,6 +51,7 @@ function seatOf(p: JeopardyState['players'][number]): SeatInfo {
     // Bei Jeopardy scheidet niemand aus – ein Minuspunktestand ist kein Aus.
     eliminated: false,
     avatar: p.avatar,
+    moderator: p.moderator,
   };
 }
 
@@ -58,7 +59,13 @@ export const jeopardyModule: GameModule<'jeopardy'> = {
   id: 'jeopardy',
 
   create(code, config, deps, now) {
-    const rules = sanitizeJeopardyRules(config.jeopardy ?? config.jeopardyRules ?? {});
+    const rules = sanitizeJeopardyRules({
+      ...((config.jeopardy ?? config.jeopardyRules ?? {}) as object),
+      // Ob moderiert wird, entscheidet der „Raum erstellen"-Dialog, nicht
+      // eine Regel, die sich später umstellen ließe: der Moderator wird beim
+      // ersten `addPlayer` markiert und bliebe es sonst nicht.
+      moderated: Boolean(config.moderate),
+    });
     // Beim Anlegen darf ein unbekanntes Paket noch ersetzt werden – ab jetzt
     // ist die Wahl fest.
     const packs = deps.packs();
@@ -110,9 +117,13 @@ export const jeopardyModule: GameModule<'jeopardy'> = {
    */
   activeSeatId(s) {
     if (s.phase !== 'playing') return null;
-    if (!s.clue) return s.players[s.pickerIndex]?.id ?? null;
+    // Der Moderator ist nie „dran": er führt durch die Sendung, er spielt
+    // nicht mit. Deshalb bleibt der Picker die Anzeige – auch moderiert, wo
+    // er nur sagt, welches Feld er sich wünscht.
+    const picker = s.players[s.pickerIndex];
+    if (!s.clue) return picker?.moderator ? null : picker?.id ?? null;
     if (s.clue.step === 'answering') return s.clue.answererId;
-    if (s.clue.step === 'revealed') return s.players[s.pickerIndex]?.id ?? null;
+    if (s.clue.step === 'revealed') return picker?.moderator ? null : picker?.id ?? null;
     return null;
   },
 

@@ -73,6 +73,9 @@ function CreateRoomDialog({
   const [poker, setPoker] = useState<PokerRules>({ ...DEFAULT_POKER_RULES });
   const [jeopardy, setJeopardy] = useState<JeopardyRules>({ ...DEFAULT_JEOPARDY_RULES });
   const [pursuit, setPursuit] = useState<PursuitRules>({ ...DEFAULT_PURSUIT_RULES });
+  // Nur Jeopardy kennt den Moderator – bei den anderen wäre der Schalter ein
+  // stiller No-op, und genau die soll es hier nicht geben.
+  const [moderate, setModerate] = useState(false);
   const [busy, setBusy] = useState(false);
 
   async function create() {
@@ -89,6 +92,7 @@ function CreateRoomDialog({
       pokerRules: poker,
       jeopardyRules: jeopardy,
       pursuitRules: pursuit,
+      moderate: gameId === 'jeopardy' ? moderate : undefined,
     });
     setBusy(false);
     if (r.ok) onClose();
@@ -140,6 +144,20 @@ function CreateRoomDialog({
         pursuit={pursuit as unknown as Record<string, unknown>}
         setPursuit={(v) => setPursuit(v as unknown as PursuitRules)}
       />
+
+      {gameId === 'jeopardy' && (
+        <>
+          <label className="rule-row boolean">
+            <span>🎙 Ich moderiere nur (Präsentation am Fernseher)</span>
+            <input type="checkbox" checked={moderate} onChange={(e) => setModerate(e.target.checked)} />
+          </label>
+          <p className="hint">
+            Dann spielst du nicht mit, sondern führst durch die Sendung: Dein
+            Bildschirm zeigt Brett und Frage groß, du wählst die Felder, öffnest
+            den Buzzer und wertest. Die Mitspieler brauchen nur ihr Handy.
+          </p>
+        </>
+      )}
 
       <button className="btn primary big" disabled={busy} onClick={create}>
         {info.emoji} Raum erstellen

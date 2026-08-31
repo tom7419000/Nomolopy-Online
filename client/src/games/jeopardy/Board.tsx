@@ -25,7 +25,10 @@ export function ScoreBoard({
   const picker = view.players[view.pickerIndex]?.id;
   return (
     <ul className="jeo-scores">
-      {view.players.map((p) => (
+      {/* Der Moderator hat keinen Punktestand – er spielt nicht mit. */}
+      {view.players
+        .filter((p) => !p.moderator)
+        .map((p) => (
         <li
           key={p.id}
           className={[
@@ -50,7 +53,7 @@ export function ScoreBoard({
           </span>
           <strong className={p.score < 0 ? 'negative' : ''}>{p.score}</strong>
         </li>
-      ))}
+        ))}
     </ul>
   );
 }

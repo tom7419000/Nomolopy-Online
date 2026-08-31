@@ -40,6 +40,7 @@ function seatOf(p: PursuitPlayer): SeatInfo {
     connected: p.connected,
     eliminated: p.resigned,
     avatar: p.avatar,
+    moderator: false,
   };
 }
 

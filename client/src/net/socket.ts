@@ -146,6 +146,8 @@ export interface CreateRoomOptions {
   pokerRules?: Partial<PokerRules>;
   jeopardyRules?: Partial<JeopardyRules>;
   pursuitRules?: Partial<PursuitRules>;
+  /** Jeopardy: der Ersteller moderiert, statt mitzuspielen. */
+  moderate?: boolean;
 }
 
 export const socketApi = {

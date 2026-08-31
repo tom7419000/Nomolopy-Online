@@ -485,3 +485,141 @@ test('Auch die Frage-Kennung verlässt den Server erst bei der Auflösung', () =
   act(s, 'p2', { type: 'judge', correct: true }, t);
   assert.equal(jeopardyView(s).clue!.questionId, s.clue!.questionId, 'jetzt schon');
 });
+
+// ---------------------------------------------------------------------------
+// Der Moderator
+// ---------------------------------------------------------------------------
+
+/**
+ * Eine moderierte Sendung: `p0` führt durch, `p1`…`pn` spielen.
+ *
+ * Der Moderator ist bewusst ein SITZ mit Markierung und kein Raum-Feld –
+ * so gelten Host-Rechte, Host-Übergang und Rauswerfen unverändert weiter.
+ */
+function show(names = ['Mod', 'Ben', 'Clara']) {
+  const state = createJeopardy('TEST', {
+    ...DEFAULT_JEOPARDY_RULES,
+    packId: PACK.id,
+    readSeconds: 0,
+    moderated: true,
+  });
+  names.forEach((n, i) => addJeopardyPlayer(state, `p${i}`, n, i === 0));
+  const r = startJeopardy(state, PACK, 1000);
+  assert.equal(r.ok, true, r.error);
+  return state;
+}
+
+test('Der Moderator sitzt mit am Tisch, spielt aber nicht mit', () => {
+  const s = show();
+  assert.equal(s.players[0].moderator, true, 'der Ersteller moderiert');
+  assert.equal(s.players[0].isHost, true, 'und bleibt Host – daran hängt die Plattform');
+  assert.equal(s.players[1].moderator, false);
+  assert.notEqual(picker(s), 'p0', 'gewählt wird von einem Mitspieler');
+});
+
+test('Der Moderator zählt nicht zur Mindestspielerzahl', () => {
+  const s = createJeopardy('TEST', { ...DEFAULT_JEOPARDY_RULES, packId: PACK.id, moderated: true });
+  addJeopardyPlayer(s, 'p0', 'Mod', true);
+  addJeopardyPlayer(s, 'p1', 'Ben', false);
+
+  const r = startJeopardy(s, PACK, 1000);
+  assert.equal(r.ok, false, 'ein Mitspieler ist keine Sendung');
+  assert.match(r.error ?? '', /Mitspieler|Spieler/);
+
+  addJeopardyPlayer(s, 'p2', 'Clara', false);
+  assert.equal(startJeopardy(s, PACK, 1000).ok, true);
+});
+
+test('Der Moderator wählt die Felder – der Picker nur den Wunsch', () => {
+  const s = show();
+  assert.equal(act(s, picker(s), { type: 'pick', col: 0, row: 0 }).ok, false, 'der Picker wählt nicht selbst');
+  assert.equal(act(s, 'p0', { type: 'pick', col: 0, row: 0 }).ok, true);
+  assert.equal(s.clue!.col, 0);
+});
+
+test('Ohne Moderator-Uhr steht die Frage, bis er den Buzzer aufmacht', () => {
+  const s = show();
+  act(s, 'p0', { type: 'pick', col: 0, row: 0 });
+  assert.equal(s.clue!.step, 'reading');
+  assert.equal(s.clue!.deadline, null, 'keine Vorlesezeit – er liest, so lange er braucht');
+  assert.equal(jeopardyTick(s, 9_000_000, PACK), false, 'auch später nicht von selbst');
+
+  assert.equal(act(s, 'p1', { type: 'openBuzzer' }).ok, false, 'ein Mitspieler macht ihn nicht auf');
+  assert.equal(act(s, 'p0', { type: 'openBuzzer' }, 2000).ok, true);
+  assert.equal(s.clue!.step, 'buzzing');
+});
+
+test('Der Moderator buzzert nicht mit', () => {
+  const s = show();
+  act(s, 'p0', { type: 'pick', col: 0, row: 0 });
+  act(s, 'p0', { type: 'openBuzzer' }, 2000);
+
+  const r = act(s, 'p0', { type: 'buzz' }, 2100);
+  assert.equal(r.ok, false);
+  assert.match(r.error ?? '', /moderierst/);
+});
+
+test('Der Moderator wertet allein', () => {
+  const s = show();
+  act(s, 'p0', { type: 'pick', col: 0, row: 0 });
+  act(s, 'p0', { type: 'openBuzzer' }, 2000);
+  act(s, 'p1', { type: 'buzz' }, 2100);
+  jeopardyTick(s, 2100 + BUZZ_GRACE_MS, PACK);
+  act(s, 'p1', { type: 'answer', text: solution(s) }, 2300);
+  assert.equal(s.clue!.step, 'judging');
+
+  // Ohne die Sperre landete die Stimme zwar in `votes`, würde aber
+  // mitgezählt – gewertet hätte dann doch die Runde.
+  assert.equal(act(s, 'p2', { type: 'judge', correct: false }, 2400).ok, false, 'Mitspieler werten nicht');
+  assert.deepEqual(s.clue!.votes, {});
+
+  assert.equal(act(s, 'p0', { type: 'judge', correct: true }, 2500).ok, true);
+  assert.equal(s.clue!.step, 'revealed', 'seine Stimme genügt');
+  assert.equal(s.players.find((p) => p.id === 'p1')!.score, s.clue!.value);
+});
+
+test('Der Moderator löst auf und führt weiter', () => {
+  const s = show();
+  act(s, 'p0', { type: 'pick', col: 0, row: 0 });
+  act(s, 'p0', { type: 'openBuzzer' }, 2000);
+
+  assert.equal(act(s, 'p1', { type: 'skip' }, 2100).ok, false, 'auflösen darf nur er');
+  assert.equal(act(s, 'p0', { type: 'skip' }, 2100).ok, true);
+  assert.equal(s.clue!.step, 'revealed');
+
+  assert.equal(act(s, 'p1', { type: 'next' }, 2200).ok, false);
+  assert.equal(act(s, 'p0', { type: 'next' }, 2200).ok, true);
+  assert.equal(s.clue, null, 'zurück zum Brett');
+});
+
+test('Der Moderator steht nicht in der Wertung', () => {
+  const s = show();
+  s.players[0].score = 9999; // käme er in die Wertung, gewänne er
+  act(s, 'p0', { type: 'pick', col: 0, row: 0 });
+  // Das letzte Feld: danach ist Schluss, und es wird abgerechnet.
+  for (const col of s.board) col.used = col.used.map(() => true);
+  act(s, 'p0', { type: 'skip' }, 2100);
+  act(s, 'p0', { type: 'next' }, 3000);
+
+  assert.equal(s.phase, 'ended');
+  assert.notEqual(s.winnerId, 'p0', 'der Moderator gewinnt seine eigene Sendung nicht');
+});
+
+test('Ist der Moderator weg, gelten wieder die normalen Regeln', () => {
+  const s = show();
+  s.players[0].connected = false;
+
+  // Sonst stünde die Sendung still: nur er dürfte wählen, und niemand
+  // könnte ihn ersetzen.
+  assert.equal(act(s, picker(s), { type: 'pick', col: 0, row: 0 }).ok, true);
+  assert.equal(s.clue!.step, 'buzzing', 'ohne ihn greift wieder readSeconds: 0');
+});
+
+test('Die Ansicht verrät den Moderator, aber nicht die Antwort', () => {
+  const s = show();
+  act(s, 'p0', { type: 'pick', col: 0, row: 0 });
+  const v = jeopardyView(s);
+  assert.equal(v.players[0].moderator, true);
+  assert.equal(v.clue!.answer, null);
+  assert.equal(v.clue!.questionId, null);
+});

@@ -67,7 +67,9 @@ export function RoomPage() {
   const isHost = me?.isHost ?? false;
   const chat = state ? moduleFor(room.meta.gameId).messages(state) : [];
   const minPlayers = info.minPlayers;
-  const canStart = players.length >= minPlayers;
+  // Ein Moderator spielt nicht mit und zählt deshalb nicht zur Mindestzahl.
+  const contestants = players.filter((p) => !p.moderator);
+  const canStart = contestants.length >= minPlayers;
 
   async function start() {
     setBusy(true);
@@ -89,7 +91,7 @@ export function RoomPage() {
       <div className="lobby-grid">
         <section className="panel">
           <h2>
-            Spieler ({players.length}/{room.meta.maxPlayers})
+            Spieler ({contestants.length}/{room.meta.maxPlayers})
             {!canStart && <span className="hint"> – mindestens {minPlayers} nötig</span>}
           </h2>
           <ul className="lobby-players">
@@ -100,7 +102,8 @@ export function RoomPage() {
                 </span>
                 <span className="name">
                   {p.name}
-                  {p.isHost && <span className="badge">HOST</span>}
+                  {p.moderator && <span className="badge">🎙 MODERIERT</span>}
+                  {p.isHost && !p.moderator && <span className="badge">HOST</span>}
                   {p.id === me?.id && <span className="badge you">DU</span>}
                 </span>
                 <span className="color-chip" style={{ background: p.color }} title="Spielerfarbe" />

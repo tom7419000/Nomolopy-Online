@@ -70,6 +70,7 @@ export const monopolyModule: GameModule<'monopoly'> = {
       connected: p.connected,
       eliminated: p.bankrupt,
       avatar: p.token,
+      moderator: false,
     }));
   },
 
@@ -102,6 +103,7 @@ export const monopolyModule: GameModule<'monopoly'> = {
       connected: next.connected,
       eliminated: next.bankrupt,
       avatar: next.token,
+      moderator: false,
     };
   },
 

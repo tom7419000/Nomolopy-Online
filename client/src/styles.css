@@ -1952,6 +1952,68 @@ button,
   .jeo-cell { font-size: 1rem; }
 }
 
+/* -- Präsentation: der Moderator führt durch die Sendung ------------------ */
+
+/* Der Moderator hat den großen Bildschirm für sich: keine Seitenspalte, kein
+   Chat, nur Brett und Punktestände. Die Klasse steht am `.jeopardy-layout`
+   selbst und schlägt die Media Queries oben deshalb über die Spezifität –
+   auch ein schmaler Laptop präsentiert dann formatfüllend. */
+.jeopardy-layout.presenting {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-areas: 'table';
+  padding: 10px;
+}
+.jeopardy-layout.presenting .side { display: none; }
+
+/* Läuft eine Frage, steht sie formatfüllend in der Mitte – ohne Rahmen, der
+   sie kleiner aussehen ließe, als sie ist. */
+.jeopardy-layout.presenting .jeo-clue {
+  border: none;
+  background: none;
+  padding: 8px;
+  justify-content: center;
+}
+.jeopardy-layout.presenting .jeo-prompt {
+  font-size: clamp(1.8rem, 4.6vw, 4rem);
+  line-height: 1.25;
+}
+.jeopardy-layout.presenting .jeo-submitted strong,
+.jeopardy-layout.presenting .jeo-solution strong {
+  font-size: clamp(1.6rem, 4vw, 3rem);
+}
+/* `.jeo-stage` schiebt sich sonst mit `margin-top: auto` nach unten und
+   reißt zwischen Frage und Antwort ein Loch quer über den Fernseher. */
+.jeopardy-layout.presenting .jeo-stage { margin-top: 0; }
+.jeopardy-layout.presenting .jeo-cell { font-size: clamp(1.2rem, 3vw, 2.6rem); }
+.jeopardy-layout.presenting .jeo-cat { font-size: 0.95rem; }
+.jeopardy-layout.presenting .jeo-cat > span:first-child { font-size: 1.7rem; }
+
+.jeo-moderator-hint {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, var(--panel));
+  font-size: 0.95rem;
+}
+
+/* Die Steuerleiste sitzt unter dem Brett, außerhalb von `.game-layout`: das
+   Publikum schaut aufs Brett, der Moderator greift nach unten. */
+.jeo-moderator-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 10px 14px;
+  padding-bottom: max(10px, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line);
+  background: var(--bg-2);
+}
+/* `.btn.big` ist sonst blockbreit – hier stehen mehrere nebeneinander. */
+.jeo-moderator-bar .btn.big { width: auto; min-width: 160px; min-height: 50px; }
+.jeo-mod-answer { font-size: 1.2rem; font-weight: 700; color: #ffd15c; }
+
 /* ===========================================================================
    Trivial Pursuit
    =========================================================================== */
