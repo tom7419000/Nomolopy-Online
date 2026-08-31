@@ -18,6 +18,7 @@ import { api } from '../../net';
 import { useSeatRotation, useStore } from '../../state/store';
 import { Chat } from '../../components/Chat';
 import { Modal } from '../../components/Modal';
+import { SeatDock, TableSideSheet } from '../../components/SeatDock';
 import { Wheel } from './Wheel';
 import { PursuitPanel, PursuitPlayers, type PursuitActions } from './Panels';
 import { Wedges } from './Wedges';
@@ -71,6 +72,8 @@ export function PursuitTable() {
   const isLocalGame = useStore((s) => s.session?.mode === 'local');
   const addToast = useStore((s) => s.addToast);
   const rotation = useSeatRotation();
+  // Tischmodus: das Rad bleibt liegen, die Frage kommt an die Kante.
+  const tableMode = useStore((s) => s.seating?.mode === 'fixed');
   const [tab, setTab] = useState<'log' | 'chat'>('chat');
   const [showWheel, setShowWheel] = useState(false);
   const [resultDismissed, setResultDismissed] = useState(false);
@@ -109,6 +112,36 @@ export function PursuitTable() {
       .then(() => addToast('success', 'Code kopiert!'))
       .catch(() => addToast('info', `Raum-Code: ${room.meta.code}`));
   }
+
+  const sideContent = (
+    <>
+      <div className="tabs">
+        <button className={`tab ${tab === 'chat' ? 'active' : ''}`} onClick={() => setTab('chat')}>
+          💬 Chat
+        </button>
+        <button className={`tab ${tab === 'log' ? 'active' : ''}`} onClick={() => setTab('log')}>
+          📜 Verlauf
+        </button>
+      </div>
+      <div className="tab-content">
+        {tab === 'chat' ? (
+          <Chat
+            messages={view.chat.map((m) => ({ ...m, mine: m.playerId === session?.playerId }))}
+            onSend={(t) => api.chat(t)}
+            quickMessages={QUICK_MESSAGES}
+          />
+        ) : (
+          <div className="log-panel" role="log">
+            {view.log.map((entry) => (
+              <div key={entry.id} className={`log-entry kind-${entry.kind}`}>
+                <span className="log-text">{entry.text}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
+  );
 
   return (
     <div className="game-table pursuit">
@@ -176,7 +209,11 @@ export function PursuitTable() {
         </div>
       </header>
 
-      <div className={`game-layout pursuit-layout ${wheelView ? 'wheel-view' : 'player-view'}`}>
+      <div
+        className={`game-layout pursuit-layout ${wheelView ? 'wheel-view' : 'player-view'} ${
+          tableMode ? 'at-table' : ''
+        }`}
+      >
         <main className={`tp-main ${wheelView ? 'wheel-view' : 'player-view'}`}>
           {isSpectator && <div className="spectator-banner">🖥 Rad-Ansicht – du schaust zu</div>}
           <div className="tp-wheel-wrap">
@@ -185,40 +222,28 @@ export function PursuitTable() {
               targets={targets}
               canPick={canPick}
               onPick={(id) => actions.send({ type: 'move', to: id })}
-              rotation={rotation}
             />
+            {/* Das Rad liegt still. Was sich dreht, ist die Frage – sie ist
+                das, was der Spieler lesen muss. */}
+            {tableMode && (
+              <SeatDock edge={rotation}>
+                <PursuitPanel view={view} me={me} local={isLocalGame} actions={actions} />
+              </SeatDock>
+            )}
           </div>
           <PursuitPlayers view={view} meId={me?.id} />
         </main>
 
-        <aside className="side right tp-side">
-          <PursuitPanel view={view} me={me} local={isLocalGame} actions={actions} />
-          <div className="tabs">
-            <button className={`tab ${tab === 'chat' ? 'active' : ''}`} onClick={() => setTab('chat')}>
-              💬 Chat
-            </button>
-            <button className={`tab ${tab === 'log' ? 'active' : ''}`} onClick={() => setTab('log')}>
-              📜 Verlauf
-            </button>
-          </div>
-          <div className="tab-content">
-            {tab === 'chat' ? (
-              <Chat
-                messages={view.chat.map((m) => ({ ...m, mine: m.playerId === session?.playerId }))}
-                onSend={(t) => api.chat(t)}
-                quickMessages={QUICK_MESSAGES}
-              />
-            ) : (
-              <div className="log-panel" role="log">
-                {view.log.map((entry) => (
-                  <div key={entry.id} className={`log-entry kind-${entry.kind}`}>
-                    <span className="log-text">{entry.text}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </aside>
+        {/* Am Tisch hinter einem Knopf statt in einer Spalte – die Fläche
+            gehört dem Rad. */}
+        {tableMode ? (
+          <TableSideSheet>{sideContent}</TableSideSheet>
+        ) : (
+          <aside className="side right tp-side">
+            <PursuitPanel view={view} me={me} local={isLocalGame} actions={actions} />
+            {sideContent}
+          </aside>
+        )}
       </div>
 
       {!connected && !isLocalGame && (

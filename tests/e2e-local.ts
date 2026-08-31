@@ -40,8 +40,10 @@ const TABLET = { width: 1180, height: 820 };
  * laufen ausschließlich innerhalb von page.waitForFunction().
  */
 declare const navigator: { serviceWorker: { controller: unknown } };
-declare const document: { querySelector(sel: string): unknown };
-declare const getComputedStyle: (el: unknown) => { getPropertyValue(p: string): string };
+declare const document: {
+  querySelector(sel: string): { getAttribute(name: string): string | null } | null;
+};
+declare const getComputedStyle: (el: unknown) => { transform: string };
 
 function fail(msg: string): never {
   console.error(`❌ ${msg}`);
@@ -79,19 +81,26 @@ async function setupLocalGame(
 
 /**
  * Liest die Ausrichtung des Bretts als Winkel in [0, 360).
- *
- * Der rohe Wert wird AUFSUMMIERT geführt, damit ein Wechsel von 270° auf 0°
- * um +90° weiterdreht statt um −270° zurückzurauschen. Für den Vergleich
- * zählt deshalb nur die Ausrichtung, nicht der Zählerstand: −90° und 270°
- * zeigen in dieselbe Richtung.
  */
-async function boardRotation(page: Page): Promise<number> {
-  const raw = await page.evaluate<string>(() => {
-    const el = document.querySelector('.board');
-    return el ? getComputedStyle(el).getPropertyValue('--seat-rotation').trim() : '0deg';
+async function dockEdge(page: Page): Promise<string> {
+  return page.evaluate<string>(() => {
+    const el = document.querySelector('.seat-dock');
+    return el ? (el.getAttribute('data-edge') ?? '?') : 'kein Dock';
   });
-  const deg = Number.parseFloat(raw) || 0;
-  return ((deg % 360) + 360) % 360;
+}
+
+/**
+ * Die Transformation des Bretts.
+ *
+ * Muss `none` sein: ein Brett liegt auf dem Tisch und bleibt liegen. Bis
+ * Schritt 6 drehte sich hier genau das Falsche – deshalb ist das die
+ * Zusicherung, um die es geht.
+ */
+async function boardTransform(page: Page): Promise<string> {
+  return page.evaluate<string>(() => {
+    const el = document.querySelector('.board');
+    return el ? getComputedStyle(el).transform : 'kein Brett';
+  });
 }
 
 /** Beendet den laufenden Monopoly-Zug, egal welche Phase ansteht. */
@@ -263,28 +272,44 @@ async function main() {
     await setupLocalGame(page, ['Anna', 'Ben', 'Clara', 'Dora'], 'fixed');
     await page.locator('.board').waitFor();
 
-    const seen = new Set<number>();
-    let rotationChanged = false;
-    const firstRotation = await boardRotation(page);
-    seen.add(firstRotation);
-    for (let i = 0; i < 6 && !rotationChanged; i++) {
+    await page.locator('.seat-dock').waitFor();
+
+    // Das Brett bleibt liegen. Bis Schritt 6 drehte es sich – und die
+    // Bedienung blieb aufrecht, also genau falsch herum.
+    const transform = await boardTransform(page);
+    if (transform !== 'none') fail(`Das Brett dreht sich (${transform}) – es soll liegen bleiben.`);
+
+    // Und die Seitenspalten sind weg: am Tisch gehört die Fläche dem Brett.
+    if ((await page.locator('.game-layout').count()) !== 0) {
+      fail('Im Tischmodus steht noch das Spaltenlayout.');
+    }
+
+    const seen = new Set<string>();
+    const firstEdge = await dockEdge(page);
+    seen.add(firstEdge);
+    let edgeChanged = false;
+    for (let i = 0; i < 6 && !edgeChanged; i++) {
       await finishTurn(page);
-      const now = await boardRotation(page);
+      const now = await dockEdge(page);
       seen.add(now);
-      if (now !== firstRotation) rotationChanged = true;
+      if (now !== firstEdge) edgeChanged = true;
     }
-    if (!rotationChanged) {
-      fail(`Die Ansicht dreht sich nicht mit (immer ${firstRotation}°).`);
+    if (!edgeChanged) {
+      fail(`Das Dock bleibt immer an Kante ${firstEdge}° – es soll dem Spieler folgen.`);
     }
+    if (await boardTransform(page) !== 'none') fail('Das Brett hat sich doch gedreht.');
+
     // Nach einem Reload muss die Sitzordnung noch stehen
-    const before = await boardRotation(page);
+    const before = await dockEdge(page);
     await page.reload();
-    await page.locator('.board').waitFor({ timeout: 20_000 });
-    const after = await boardRotation(page);
+    await page.locator('.seat-dock').waitFor({ timeout: 20_000 });
+    const after = await dockEdge(page);
     if (before !== after) fail(`Sitzordnung nach Reload verloren: ${before}° → ${after}°`);
     await page.screenshot({ path: path.join(SHOTS, 'local-fixed-seats.png') });
     console.log(
-      `✔ Feste Plätze: Ansicht dreht mit (${[...seen].map((d) => `${d}°`).join(', ')}), überlebt Reload`
+      `✔ Feste Plätze: Brett liegt still, die Bedienung wandert an die Kante (${[...seen]
+        .map((d) => `${d}°`)
+        .join(', ')}) und überlebt einen Reload`
     );
 
     // --- 8) Kein einziger Socket.io-Kontakt --------------------------------

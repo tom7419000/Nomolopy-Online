@@ -4,7 +4,6 @@ import { computeRent } from '@shared/engine';
 import { money, softHyphenate, tileIcon } from '../../ui/format';
 import { tileCenterPct, tileGridPos, tileSide, tokenOffset } from '../../ui/layout';
 import { useStore } from '../../state/store';
-import { useRotatedStyle } from '../../hooks/useRotatedStyle';
 
 /**
  * Figuren laufen Feld für Feld: Wir halten pro Spieler eine "angezeigte"
@@ -175,8 +174,7 @@ function TokenLayer({ game }: { game: GameState }) {
   );
 }
 
-export function Board({ game }: { game: GameState }) {
-  const rotated = useRotatedStyle();
+export function Board({ game, tableMode }: { game: GameState; tableMode?: boolean }) {
   const openDialog = useStore((s) => s.openDialog);
   const current = game.players[game.currentPlayer];
   const lastLog = game.log.length ? game.log[game.log.length - 1] : null;
@@ -191,7 +189,6 @@ export function Board({ game }: { game: GameState }) {
         {
           '--board-color': game.edition.boardColor,
           ...groupVars,
-          ...rotated,
         } as React.CSSProperties
       }
     >
@@ -221,11 +218,13 @@ export function Board({ game }: { game: GameState }) {
                 {current?.name} ist am Zug
               </span>
             )}
-            <DicePair dice={game.dice} />
+            {/* Am Tisch stehen Würfel und letzte Zeile im Dock, gedreht zu
+                dem, der dran ist – hier wären sie für ihn kopfüber. */}
+            {!tableMode && <DicePair dice={game.dice} />}
             {game.rules.freeParkingBonus && (
               <span className="center-pot">Frei-Parken-Topf: {money(game, game.freeParkingPot)}</span>
             )}
-            {lastLog && <span className="center-lastlog">{lastLog.text}</span>}
+            {!tableMode && lastLog && <span className="center-lastlog">{lastLog.text}</span>}
           </div>
 
           <div className="center-decks" aria-hidden>

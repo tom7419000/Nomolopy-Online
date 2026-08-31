@@ -1140,6 +1140,8 @@ input[type='number'] { appearance: textfield; }
 .poker-layout { grid-template-columns: minmax(0, 1fr) 340px; grid-template-areas: 'table side'; }
 .poker-area {
   grid-area: table;
+  /* Ankerpunkt für das Sitz-Dock bei festen Plätzen. */
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -1534,27 +1536,82 @@ button,
 .auction-passed { margin-top: 6px; }
 
 /* --------------------------------------------------------------------------
-   Feste Sitzplätze: die Spielansicht dreht sich zum aktiven Spieler
+   Feste Sitzplätze: der Tisch liegt, die Bedienung dreht sich
    -------------------------------------------------------------------------- */
 
-/* Gedreht wird nur das Brett. Es ist quadratisch (`aspect-ratio: 1`), also
-   ist die Bounding-Box bei 90/180/270° dieselbe – nichts läuft über. Und
-   `container-type: inline-size` sorgt dafür, dass die cqw-Schriftgrößen
-   im Inneren gültig bleiben, weil Transforms das Layout nicht anfassen. */
-.board {
-  transform: rotate(var(--seat-rotation, 0deg));
-  transition: transform 420ms cubic-bezier(0.2, 0.8, 0.2, 1);
+/* Das Spielfeld dreht sich NICHT. Ein Brett liegt auf dem Tisch und bleibt
+   liegen; gedreht wird das, womit der Spieler hantiert – und das steht im
+   Sitz-Dock an seiner Kante. */
+
+.seat-dock {
+  position: absolute;
+  z-index: 8;
+  /* Gedeckelt, damit das Dock nie mehr als gut die Hälfte des Bretts
+     verdeckt. Bei 90/270° wird aus der lokalen Höhe die Bildschirmbreite –
+     derselbe Deckel wirkt also an allen vier Kanten. */
+  width: min(400px, 62%);
+  max-height: 58%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.6);
+  /* Kein Übergang: zwischen zwei verschiedenen Ankerkanten lässt sich nicht
+     interpolieren, und ein Sprung ist ehrlicher als ein Umweg. */
 }
 
-/* Der Text auf den Feldern wird bewusst NICHT gegengedreht: bei 180° liest
-   das Brett für die Gegenüber kopfüber – genau wie ein echtes Brett. */
-
-@media (prefers-reduced-motion: reduce) {
-  .board { transition: none; }
+.seat-dock[data-edge='0'] {
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+}
+.seat-dock[data-edge='180'] {
+  left: 50%;
+  top: 0;
+  transform: translateX(-50%) rotate(180deg);
 }
 
-/* Poker: der Filz bleibt stehen (er ist asymmetrisch auf „ich unten"
-   zugeschnitten), aber jede Sitzbox dreht sich zu ihrem Spieler. */
+/* Die Seitenkanten drehen um die EIGENE obere Ecke und schieben sich danach
+   zurück ins Bild. Der Umweg ist nötig, weil die Höhe des Docks nicht
+   feststeht: Prozentwerte in `translate()` beziehen sich auf die eigene
+   Kantenlänge, `left`/`top` dagegen auf den Elternkasten.
+
+   Bei 90° zeigt die lokale X-Achse nach dem Drehen nach unten – der Text läuft
+   also von oben nach unten, was für jemanden, der links sitzt und nach rechts
+   auf den Tisch schaut, die normale Leserichtung ist. Bei 270° spiegelbildlich. */
+.seat-dock[data-edge='90'] {
+  left: 0;
+  top: 50%;
+  transform-origin: 0 0;
+  transform: rotate(90deg) translate(-50%, -100%);
+}
+.seat-dock[data-edge='270'] {
+  right: 0;
+  top: 50%;
+  transform-origin: 100% 0;
+  transform: rotate(-90deg) translate(50%, -100%);
+}
+
+/* Poker: der Filz bleibt stehen, aber jede Sitzbox dreht sich zu ihrem
+   Spieler – man liest ja seinen eigenen Sitz.
+
+   Bei festen Plätzen sitzt außerdem jeder an SEINER Kante (der Winkel kommt
+   dann aus `edge` statt aus dem Index), und der Filz wird symmetrisch: sein
+   asymmetrischer Zuschnitt ist auf „ich unten" gerechnet und liefe an drei
+   Kanten über. */
+/* Rund statt breit-oval: bei vier Tischkanten sollen die Sitze gleichmäßig
+   verteilt liegen, nicht weit links und rechts. */
+.poker-felt.fixed {
+  border-radius: 44%;
+  margin: 8px auto;
+  width: min(100%, calc(100dvh - 150px));
+  aspect-ratio: 1;
+  min-height: 0;
+  flex: none;
+}
 .seat.fixed-edge .seat-box,
 .seat.fixed-edge .seat-cards,
 .seat.fixed-edge .seat-action,
@@ -1846,18 +1903,7 @@ button,
 .jeo-idle { display: flex; flex-direction: column; gap: 14px; justify-content: center; flex: 1; }
 
 @media (max-width: 1240px) {
-  /* Verschiedene Antworten je Fach – nur sichtbar, wenn es weniger sind als
-   Fragen. Genau dieser Fall lässt ein Fach voll aussehen, obwohl es für
-   Multiple Choice nicht reicht. */
-.pack-grid-distinct {
-  display: block;
-  font-size: 0.68rem;
-  font-weight: 400;
-  opacity: 0.75;
-}
-.pack-grid-distinct::before { content: '↳ '; }
-
-.jeopardy-layout {
+  .jeopardy-layout {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) auto;
     grid-template-areas: 'table' 'side';
@@ -1865,18 +1911,7 @@ button,
 }
 
 @media (max-width: 880px) {
-  /* Verschiedene Antworten je Fach – nur sichtbar, wenn es weniger sind als
-   Fragen. Genau dieser Fall lässt ein Fach voll aussehen, obwohl es für
-   Multiple Choice nicht reicht. */
-.pack-grid-distinct {
-  display: block;
-  font-size: 0.68rem;
-  font-weight: 400;
-  opacity: 0.75;
-}
-.pack-grid-distinct::before { content: '↳ '; }
-
-.jeopardy-layout { grid-template-areas: 'table' 'side'; }
+  .jeopardy-layout { grid-template-areas: 'table' 'side'; }
   /* Sechs Spalten sind auf einem Handy nicht mehr tippbar – das Brett
      kippt deshalb auf sechs ZEILEN mit fünf Feldern. */
   .jeo-board { grid-template-columns: minmax(0, 1fr); gap: 8px; }
@@ -1909,6 +1944,8 @@ button,
 /* -- Das Rad -------------------------------------------------------------- */
 
 .tp-wheel-wrap {
+  /* Ankerpunkt für das Sitz-Dock bei festen Plätzen. */
+  position: relative;
   flex: 1;
   min-height: 0;
   width: 100%;
@@ -1921,9 +1958,6 @@ button,
      beim Monopoly-Brett, nur ohne aspect-ratio (das macht die viewBox). */
   width: min(100%, calc(100dvh - 160px));
   max-height: 100%;
-  /* Feste Plätze: nur das Rad dreht sich, die Seitenspalte bleibt aufrecht. */
-  transform: rotate(var(--seat-rotation, 0deg));
-  transition: transform 420ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .tp-seg {
@@ -2108,3 +2142,100 @@ button,
   .tp-main.player-view .tp-wheel { width: min(100%, 34dvh); }
   .tp-player { flex-basis: 100%; }
 }
+
+/* ===========================================================================
+   Tischmodus: das Gerät liegt in der Mitte, jeder schaut aus seiner Richtung
+   =========================================================================== */
+
+.table-mode {
+  /* Ankerpunkt für die Sitz-Docks. */
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  padding: 10px;
+}
+
+/* Das Brett wird so groß wie die kürzere Achse hergibt – ohne die beiden
+   Seitenspalten ist dafür deutlich mehr Platz als sonst. */
+.table-mode .board {
+  width: auto;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.table-side-toggle { position: absolute; top: 6px; right: 6px; z-index: 9; }
+
+/* -- Was im Dock steht ---------------------------------------------------- */
+
+/* Das Dock ist EINE Karte – Kopf, Panel und letzte Zeile teilen sie sich, das
+   Panel bringt deshalb keinen eigenen Rahmen mit. */
+.seat-dock .actions-panel {
+  min-height: 0;
+  overflow-y: auto;
+  gap: 8px;
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  flex-shrink: 1;
+}
+
+.dock-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 2px 2px 6px;
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+/* In der Brettmitte sind die Würfel in `cqw` bemaßt – das gilt nur innerhalb
+   von `.board`. Hier brauchen sie eine eigene Größe. */
+.dock-head .dice-pair { font-size: 1.15rem; flex-shrink: 0; }
+
+.dock-money {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 0.82rem;
+  min-width: 0;
+}
+.dock-money li { display: flex; align-items: center; gap: 4px; }
+.dock-money li.out { opacity: 0.45; }
+.dock-money-name { font-weight: 600; }
+.dock-money strong { font-variant-numeric: tabular-nums; }
+
+.dock-lastlog {
+  margin: 0;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+  color: var(--text-dim);
+  font-size: 0.82rem;
+  flex-shrink: 0;
+}
+
+/* Poker-Dock: die Karten liegen neben den Knöpfen, nicht darüber. */
+.seat-dock.poker-dock {
+  width: min(440px, 66%);
+  flex-direction: row;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+/* Am Tisch gehört die Fläche dem Spielfeld: keine Seitenspalte, sondern der
+   Knopf oben rechts. Steht nach den Media Queries, damit es auch auf einem
+   schmalen Tablet greift. */
+.game-layout.at-table {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-areas: 'table';
+}
+.game-layout.at-table .side { display: none; }
+.pursuit-layout.at-table { grid-template-areas: 'wheel'; }
+.pursuit-layout.at-table .tp-wheel { width: min(100%, calc(100dvh - 200px)); }

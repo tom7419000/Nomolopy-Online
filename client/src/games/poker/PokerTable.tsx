@@ -9,12 +9,13 @@ import type { HandResult, PokerPlayer, PokerView } from '@shared/poker/types';
 import { bestHand, handName } from '@shared/poker/hands';
 import { HIDDEN_CARD, pokerCallAmount, pokerMinRaiseTo, potTotal } from '@shared/poker/engine';
 import { api } from '../../net';
-import { useStore } from '../../state/store';
+import { useSeatRotation, useStore } from '../../state/store';
 import { Chat } from '../../components/Chat';
 import { Modal } from '../../components/Modal';
 import { PlayingCard } from './PlayingCard';
 import { HoleCards, usePeek } from './HoleCards';
 import { TurnBanner } from '../../components/TurnBanner';
+import { SeatDock, TableSideSheet } from '../../components/SeatDock';
 
 const QUICK_MESSAGES = ['👏 Gut gespielt', '😏 Netter Bluff', '🍀 Glück gehabt', '😂'];
 
@@ -77,8 +78,14 @@ function Seat({
   const bestSet = new Set(reveal?.best ?? []);
   const won = result?.pots.some((pot) => pot.winners.some((w) => w.playerId === player.id));
 
-  // Position auf der Ellipse: eigener Sitz unten (90°), Rest im Uhrzeigersinn
-  const angle = (Math.PI / 180) * (90 + (360 / seatCount) * index);
+  // Position auf der Ellipse: eigener Sitz unten (90°), Rest im Uhrzeigersinn.
+  //
+  // Bei festen Plätzen kommt der Winkel dagegen aus der KANTE – dann sitzt
+  // jeder dort, wo er wirklich sitzt. Die Kanten sind so definiert, dass das
+  // aufgeht: 0 = unten = 90°, 90 = links = 180°, 180 = oben = 270°,
+  // 270 = rechts = 0°.
+  const deg = edge != null ? 90 + edge : 90 + (360 / seatCount) * index;
+  const angle = (Math.PI / 180) * deg;
   const x = 50 + 43 * Math.cos(angle);
   const y = 50 + 41 * Math.sin(angle);
 
@@ -365,6 +372,7 @@ export function PokerTable() {
   const hideOwnHole = isLocalGame && !peek.peeking;
   const seating = useStore((s) => s.seating);
   const fixedSeats = seating?.mode === 'fixed';
+  const rotation = useSeatRotation();
 
   // Sitz-Anordnung: normalerweise „ich unten", Rest im Uhrzeigersinn.
   //
@@ -392,6 +400,36 @@ export function PokerTable() {
       .then(() => addToast('success', 'Code kopiert!'))
       .catch(() => addToast('info', `Raum-Code: ${room.meta.code}`));
   }
+
+  const sideContent = (
+    <>
+      <div className="tabs">
+        <button className={`tab ${tab === 'chat' ? 'active' : ''}`} onClick={() => setTab('chat')}>
+          💬 Chat
+        </button>
+        <button className={`tab ${tab === 'log' ? 'active' : ''}`} onClick={() => setTab('log')}>
+          📜 Verlauf
+        </button>
+      </div>
+      <div className="tab-content">
+        {tab === 'chat' ? (
+          <Chat
+            messages={view.chat.map((m) => ({ ...m, mine: m.playerId === session?.playerId }))}
+            onSend={(t) => api.chat(t)}
+            quickMessages={QUICK_MESSAGES}
+          />
+        ) : (
+          <div className="log-panel" role="log">
+            {view.log.map((entry) => (
+              <div key={entry.id} className={`log-entry kind-${entry.kind}`}>
+                <span className="log-text">{entry.text}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
+  );
 
   return (
     <div className="game-table poker">
@@ -454,11 +492,11 @@ export function PokerTable() {
         </div>
       </header>
 
-      <div className="game-layout poker-layout">
+      <div className={`game-layout poker-layout ${fixedSeats ? 'at-table' : ''}`}>
         <main className="poker-area">
           {isSpectator && <div className="spectator-banner">👁 Du schaust zu</div>}
-          <TurnBanner />
-          <div className="poker-felt">
+          {!fixedSeats && <TurnBanner />}
+          <div className={`poker-felt ${fixedSeats ? 'fixed' : ''}`}>
             {seats.map((p, i) => (
               <Seat
                 key={p.id}
@@ -488,41 +526,29 @@ export function PokerTable() {
             </div>
           </div>
 
-          {me && (
-            <div className="my-bar">
-              <HoleCards me={me} hint={myHint} local={isLocalGame} peek={peek} />
-              <ActionBar view={view} me={me} />
-            </div>
-          )}
+          {me &&
+            (fixedSeats ? (
+              // Der Filz bleibt liegen, die Leiste kommt an die Kante dessen,
+              // der handelt – und dreht sich zu ihm.
+              <SeatDock edge={rotation} className="poker-dock">
+                <HoleCards me={me} hint={myHint} local={isLocalGame} peek={peek} />
+                <ActionBar view={view} me={me} />
+              </SeatDock>
+            ) : (
+              <div className="my-bar">
+                <HoleCards me={me} hint={myHint} local={isLocalGame} peek={peek} />
+                <ActionBar view={view} me={me} />
+              </div>
+            ))}
         </main>
 
-        <aside className="side right">
-          <div className="tabs">
-            <button className={`tab ${tab === 'chat' ? 'active' : ''}`} onClick={() => setTab('chat')}>
-              💬 Chat
-            </button>
-            <button className={`tab ${tab === 'log' ? 'active' : ''}`} onClick={() => setTab('log')}>
-              📜 Verlauf
-            </button>
-          </div>
-          <div className="tab-content">
-            {tab === 'chat' ? (
-              <Chat
-                messages={view.chat.map((m) => ({ ...m, mine: m.playerId === session?.playerId }))}
-                onSend={(t) => api.chat(t)}
-                quickMessages={QUICK_MESSAGES}
-              />
-            ) : (
-              <div className="log-panel" role="log">
-                {view.log.map((entry) => (
-                  <div key={entry.id} className={`log-entry kind-${entry.kind}`}>
-                    <span className="log-text">{entry.text}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </aside>
+        {/* Am Tisch hinter einem Knopf statt in einer Spalte – die Fläche
+            gehört dem Filz. */}
+        {fixedSeats ? (
+          <TableSideSheet>{sideContent}</TableSideSheet>
+        ) : (
+          <aside className="side right">{sideContent}</aside>
+        )}
       </div>
 
       {!connected && !isLocalGame && (

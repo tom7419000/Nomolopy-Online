@@ -79,23 +79,39 @@ Beim Anlegen der Partie wird gewählt, wie das Gerät auf dem Tisch liegt:
 | | |
 |---|---|
 | **📱 Weiterreichen** (Vorgabe) | Das Gerät wandert reihum, die Ansicht bleibt wie sie ist. |
-| **🪑 Feste Plätze** | Das Gerät liegt in der Mitte, jeder sitzt an einer Kante (unten / rechts / oben / links). Wer dran ist, bekommt das Brett zu sich gedreht. |
+| **🪑 Feste Plätze** | Das Gerät liegt in der Tischmitte, jeder sitzt an einer Kante (unten / rechts / oben / links). |
+
+**Das Spielfeld bleibt liegen, die Bedienung dreht sich.** Ein Brett liegt auf
+dem Tisch und bleibt liegen; was sich zum Spieler dreht, ist das, womit er
+hantiert. Genau das macht der **Sitz-Dock**: Würfel, Knöpfe, Frage und die
+letzte Protokollzeile erscheinen an der Kante dessen, der dran ist, und sind zu
+ihm gedreht — wie ein Zettel, den man ihm hinschiebt.
+
+| Spiel | Was liegt | Was sich dreht |
+|---|---|---|
+| 🎲 **Monopoly** | das Brett | Würfel, Aktionsknöpfe, Geldübersicht, letzte Zeile |
+| 🃏 **Poker** | Filz und Sitzkranz | die Aktionsleiste (Karten + Check/Call/Raise); jede Sitzbox zeigt zu ihrem Spieler |
+| 🧀 **Trivial Pursuit** | das Rad | Frage, Antwortmöglichkeiten, Würfel, Zielreihe |
+
+Bei festen Plätzen wird der Bildschirm zum Tisch: die Seitenspalten
+verschwinden, das Spielfeld wird so groß wie möglich, und Verlauf, Chat und
+Spielerliste liegen hinter dem 📜 oben rechts. Bei Poker sitzt außerdem jeder
+an seiner **echten** Kante (der Winkel kommt dann aus der Sitzwahl statt aus
+dem Index) und der Filz wird rund statt breit-oval.
 
 Feste Plätze gehen bis vier Spieler – ein Tisch hat vier Kanten. Der Text auf
-den Feldern wird bewusst **nicht** gegengedreht: bei 180° liest das Brett für
-die Gegenübersitzenden kopfüber, genau wie ein echtes Brett.
+den Brettfeldern wird bewusst **nicht** gegengedreht: bei 180° liest das Brett
+für die Gegenübersitzenden kopfüber, genau wie ein echtes Brett.
 
 Bei **Jeopardy** entfällt die Wahl, und das Setup sagt auch warum: Alle lesen
 dieselbe Frage, sie zu einem Einzelnen zu drehen machte sie für die anderen
 unlesbar. Ob ein Spiel etwas davon hat, steht als `caps.rotatesToActor` an
 seinem Modul – so kann kein Schalter dastehen, der nichts tut.
 
-Gedreht wird nur das Spielfeld, nicht die App-Hülle. Toasts, Dialoge und die
-Kopfzeile bleiben aufrecht – sie hängen an `position: fixed` und an
-Viewport-Einheiten, die sich immer auf den physischen Bildschirm beziehen.
-Bei Poker bleibt der Sitzkranz stehen und stattdessen dreht sich jede
-Sitzbox einzeln zu ihrem Spieler; der Filz selbst ist auf „ich unten"
-zugeschnitten und liefe quer über den Rand.
+Was **nicht** mitdreht: Toasts, Dialoge und die Kopfzeile. Sie hängen an
+`position: fixed` und an Viewport-Einheiten, die sich immer auf den physischen
+Bildschirm beziehen – in einem gedrehten Vorfahren verlören sie ihre
+Verankerung. Wer in den Verlauf schaut, lehnt sich hinüber.
 
 ### Poker: Handkarten bleiben geheim
 

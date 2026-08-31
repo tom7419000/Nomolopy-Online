@@ -101,7 +101,6 @@ export function Wheel({
   targets,
   canPick,
   onPick,
-  rotation,
 }: {
   players: PursuitPlayer[];
   /**
@@ -112,8 +111,6 @@ export function Wheel({
   targets: number[];
   canPick: boolean;
   onPick(nodeId: number): void;
-  /** Drehwinkel bei festen Plätzen. */
-  rotation?: number;
 }) {
   const segs = useMemo(segments, []);
   // Ziffer je Ziel – dieselbe steht auf dem Knopf in der Zielreihe. Zwei
@@ -134,7 +131,6 @@ export function Wheel({
       viewBox="-108 -108 216 216"
       role="img"
       aria-label="Trivial-Pursuit-Rad"
-      style={rotation ? { ['--seat-rotation' as string]: `${rotation}deg` } : undefined}
     >
       {/* Speichenbänder als Untergrund, damit die Felder auf einer Linie liegen */}
       {TRIVIA_CATEGORIES.map((_, s) => {
