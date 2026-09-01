@@ -23,6 +23,7 @@ import { Chat } from '../../components/Chat';
 import { Modal } from '../../components/Modal';
 import { JeopardyBoard, ScoreBoard } from './Board';
 import { Clue, Countdown, type ClueActions } from './Clue';
+import { membersOf, teamLabel } from '@shared/jeopardy/engine';
 
 const QUICK_MESSAGES = ['Zu schnell! 😄', 'Das zählt!', 'Niemals …', 'Gut gebuzzert!', 'Nochmal!'];
 
@@ -30,22 +31,19 @@ function GameOver({ onClose }: { onClose: () => void }) {
   const view = useStore((s) => s.jeopardy)!;
   const session = useStore((s) => s.session);
   const isHost = view.players.find((p) => p.id === session?.playerId)?.isHost ?? false;
-  const ranking = [...view.players].sort((a, b) => b.score - a.score);
+  const ranking = [...view.teams].sort((a, b) => b.score - a.score);
+  const winner = view.teams.find((t) => t.id === view.winnerTeamId);
 
   return (
     <Modal title="🏆 Vorbei!" onClose={onClose}>
-      <p>
-        {view.winnerId
-          ? `${view.players.find((p) => p.id === view.winnerId)?.name} gewinnt.`
-          : 'Kein Sieger.'}
-      </p>
+      <p>{winner ? `${teamLabel(view, winner)} gewinnt.` : 'Kein Sieger.'}</p>
       <ol className="ranking">
-        {ranking.map((p) => (
-          <li key={p.id}>
-            <span style={{ color: p.color }}>
-              {p.avatar} {p.name}
+        {ranking.map((t) => (
+          <li key={t.id}>
+            <span style={{ color: t.color }}>
+              {membersOf(view, t.id).length === 1 ? '🎯' : '👥'} {teamLabel(view, t)}
             </span>
-            <span>{p.score} Punkte</span>
+            <span>{t.score} Punkte</span>
           </li>
         ))}
       </ol>
@@ -81,13 +79,19 @@ export function JeopardyTable() {
   const me = view.players.find((p) => p.id === session?.playerId);
   const isSpectator = !me;
   const clue = view.clue;
-  const picker = view.players[view.pickerIndex];
+  // Dran ist ein TEAM – jedes Mitglied darf tippen.
+  const pickerTeam = view.teams.find((t) => t.id === view.pickerTeamId) ?? null;
+  const pickerName = pickerTeam ? teamLabel(view, pickerTeam) : null;
+  // Am gemeinsamen Gerät handelt die Oberfläche FÜR einen Sitz – dort ist
+  // jeder sein eigenes Team, also ist das erste Mitglied der richtige.
+  const pickerSeatId = view.pickerTeamId ? membersOf(view, view.pickerTeamId)[0]?.id : undefined;
   // Moderiert wird die Sendung von einem, der nicht mitspielt: er wählt die
   // Felder, liest vor und wertet. Den Buzzer macht die Vorlesezeit auf – er
   // kann sie nur abkürzen.
   const moderator = view.players.find((p) => p.moderator && p.connected) ?? null;
   const iModerate = !!me?.moderator;
-  const isPicker = iModerate || (!moderator && (isLocalGame || (!!me && picker?.id === me.id)));
+  const isPicker =
+    iModerate || (!moderator && (isLocalGame || (!!me && me.teamId === view.pickerTeamId)));
 
   // Zuschauer sind der große Bildschirm; am geteilten Gerät sitzen alle
   // davor. Der Moderator startet direkt in der Präsentation.
@@ -129,26 +133,30 @@ export function JeopardyTable() {
       },
       judge(correct) {
         // Am geteilten Gerät wertet die Runde gemeinsam – ein Tipp genügt,
-        // abgegeben im Namen des Ersten, der nicht selbst geantwortet hat.
-        const judge = view.players.find((p) => p.connected && p.id !== clue?.answererId);
+        // abgegeben im Namen des Ersten, der nicht im Team des Antwortenden
+        // ist (der dürfte über die eigenen Punkte nicht abstimmen).
+        const answering = view.players.find((p) => p.id === clue?.answererId)?.teamId;
+        const judge = view.players.find(
+          (p) => p.connected && !p.moderator && p.teamId !== answering
+        );
         send({ type: 'judge', correct }, judge?.id);
       },
       openBuzzer() {
-        send({ type: 'openBuzzer' }, picker?.id);
+        send({ type: 'openBuzzer' }, pickerSeatId);
       },
       skip() {
-        send({ type: 'skip' }, picker?.id);
+        send({ type: 'skip' }, pickerSeatId);
       },
       next() {
-        send({ type: 'next' }, picker?.id);
+        send({ type: 'next' }, pickerSeatId);
       },
     }),
     // `send` und die IDs hängen an genau diesen Werten.
-    [openKey, clue?.answererId, picker?.id, view.players, isLocalGame]
+    [openKey, clue?.answererId, pickerSeatId, view.players, isLocalGame]
   );
 
   function pick(col: number, row: number) {
-    send({ type: 'pick', col, row }, picker?.id);
+    send({ type: 'pick', col, row }, pickerSeatId);
   }
 
   function copyCode() {
@@ -167,7 +175,7 @@ export function JeopardyTable() {
           <strong>🎯 {room.meta.name}</strong>
           <span className="hint">
             {left} von 30 Feldern offen
-            {clue ? '' : picker ? ` · ${picker.name} wählt` : ''}
+            {clue ? '' : pickerName ? ` · ${pickerName} wählt` : ''}
           </span>
         </div>
         {isLocalGame ? (
@@ -224,7 +232,7 @@ export function JeopardyTable() {
               🎙 Du moderierst.{' '}
               {clue
                 ? 'Lies vor – der Buzzer geht von selbst auf. Werten tust du.'
-                : `${picker?.name ?? 'Wer dran ist'} darf sich ein Feld wünschen – tipp es an.`}
+                : `${pickerName ?? 'Wer dran ist'} darf sich ein Feld wünschen – tipp es an.`}
             </div>
           )}
 
@@ -272,7 +280,7 @@ export function JeopardyTable() {
           ) : (
             <div className="jeo-idle">
               <p className="jeo-waiting">
-                <strong>{picker?.name ?? '—'}</strong> wählt gerade …
+                <strong>{pickerName ?? '—'}</strong> wählt gerade …
               </p>
               <ScoreBoard view={view} meId={me?.id} />
             </div>

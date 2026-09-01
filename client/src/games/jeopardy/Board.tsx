@@ -8,8 +8,16 @@
  */
 
 import { CATEGORY_EMOJI, CATEGORY_LABELS } from '@shared/trivia/types';
+import { membersOf, teamLabel } from '@shared/jeopardy/engine';
 import type { JeopardyView } from '@shared/jeopardy/types';
 
+/**
+ * Die Punktetafel – eine Zeile je TEAM.
+ *
+ * Wer allein spielt, ist ein Team mit einem Mitglied; die Zeile sieht dann
+ * genauso aus wie vor den Teams. Deshalb gibt es hier nur einen Fall statt
+ * „mit Teams" und „ohne".
+ */
 export function ScoreBoard({
   view,
   meId,
@@ -22,38 +30,43 @@ export function ScoreBoard({
   buzzedIds?: string[];
   answererId?: string | null;
 }) {
-  const picker = view.players[view.pickerIndex]?.id;
+  const myTeam = view.players.find((p) => p.id === meId)?.teamId;
+  const answeringTeam = view.players.find((p) => p.id === answererId)?.teamId;
   return (
     <ul className="jeo-scores">
-      {/* Der Moderator hat keinen Punktestand – er spielt nicht mit. */}
-      {view.players
-        .filter((p) => !p.moderator)
-        .map((p) => (
-        <li
-          key={p.id}
-          className={[
-            'jeo-score',
-            p.id === answererId ? 'answering' : '',
-            buzzedIds?.includes(p.id) ? 'buzzed' : '',
-            !p.connected ? 'away' : '',
-            p.id === meId ? 'me' : '',
-          ]
-            .filter(Boolean)
-            .join(' ')}
-          style={{ borderColor: p.color }}
-        >
-          <span className="jeo-score-name">
-            <span aria-hidden>{p.avatar}</span> {p.name}
-            {p.id === picker && !view.clue && (
-              <span className="badge" title="wählt das nächste Feld">
-                wählt
-              </span>
-            )}
-            {!p.connected && <span className="badge away">weg</span>}
-          </span>
-          <strong className={p.score < 0 ? 'negative' : ''}>{p.score}</strong>
-        </li>
-        ))}
+      {/* Der Moderator hat keinen Punktestand – er spielt nicht mit und
+          steht deshalb in gar keinem Team. */}
+      {view.teams.map((t) => {
+        const members = membersOf(view, t.id);
+        const solo = members.length === 1;
+        return (
+          <li
+            key={t.id}
+            className={[
+              'jeo-score',
+              t.id === answeringTeam ? 'answering' : '',
+              members.some((m) => buzzedIds?.includes(m.id)) ? 'buzzed' : '',
+              members.every((m) => !m.connected) ? 'away' : '',
+              t.id === myTeam ? 'me' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+            style={{ borderColor: t.color }}
+          >
+            <span className="jeo-score-name">
+              <span aria-hidden>{solo ? members[0]?.avatar ?? '👥' : '👥'}</span>{' '}
+              {teamLabel(view, t)}
+              {t.id === view.pickerTeamId && !view.clue && (
+                <span className="badge" title="wählt das nächste Feld">
+                  wählt
+                </span>
+              )}
+              {members.every((m) => !m.connected) && <span className="badge away">weg</span>}
+            </span>
+            <strong className={t.score < 0 ? 'negative' : ''}>{t.score}</strong>
+          </li>
+        );
+      })}
     </ul>
   );
 }

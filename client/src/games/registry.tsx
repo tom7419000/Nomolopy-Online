@@ -14,6 +14,7 @@ import type { AnyGameState, GameId } from '@shared/games';
 import { GameTable } from './monopoly/GameTable';
 import { PokerTable } from './poker/PokerTable';
 import { JeopardyTable } from './jeopardy/JeopardyTable';
+import { JeopardyLobbyTeams } from './jeopardy/LobbyTeams';
 import { PursuitTable } from './pursuit/PursuitTable';
 import {
   MonopolySettings,
@@ -44,6 +45,14 @@ export interface ClientGame {
   Table: ComponentType;
   /** Einstellungen im Wartezimmer (nur online). */
   LobbySettings: ComponentType<{ isHost: boolean }>;
+  /**
+   * Optionaler Block unter der Spielerliste im Wartezimmer.
+   *
+   * Anders als `LobbySettings` NICHT host-gesperrt: Jeopardys Teams sucht
+   * sich jeder selbst aus. Ohne diesen Steckplatz hätte `Room.tsx` wieder
+   * Jeopardy-Wissen bekommen, das die Registry gerade abschaffen soll.
+   */
+  LobbyExtras?: ComponentType;
   /** Felder im „Raum erstellen"- und im lokalen Setup-Dialog. */
   CreateFields: ComponentType<CreateFieldsProps>;
   /**
@@ -83,6 +92,7 @@ export const CLIENT_GAMES: Record<GameId, ClientGame> = {
   jeopardy: {
     Table: JeopardyTable,
     LobbySettings: JeopardySettings,
+    LobbyExtras: JeopardyLobbyTeams,
     CreateFields: JeopardyCreateFields,
     notify: jeopardyNotify,
   },

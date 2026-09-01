@@ -32,13 +32,19 @@ export function jeopardyNotify(
   const c = next.clue;
   if (!c) return;
 
+  // Sperre und Wertung hängen am TEAM, nicht an der Person: Wenn der Kollege
+  // danebenlag, ist der Versuch verbraucht, und über die eigenen Punkte
+  // stimmt niemand ab.
+  const myTeam = next.players.find((p) => p.id === ctx.playerId)?.teamId;
+  const answeringTeam = next.players.find((p) => p.id === c.answererId)?.teamId;
+
   // Der Buzzer geht auf (auch erneut nach einer falschen Antwort).
   if (c.step === 'buzzing' && (prev?.clue?.step !== 'buzzing' || clueKey(next) !== clueKey(prev))) {
-    if (!c.lockedOut.includes(ctx.playerId)) ctx.toast('turn', '🔔 Buzzer ist offen!');
+    if (myTeam && !c.lockedOut.includes(myTeam)) ctx.toast('turn', '🔔 Buzzer ist offen!');
   }
 
   // Gewertet werden muss aktiv – sonst entscheidet die Uhr.
-  if (c.step === 'judging' && prev?.clue?.step !== 'judging' && c.answererId !== ctx.playerId) {
+  if (c.step === 'judging' && prev?.clue?.step !== 'judging' && myTeam !== answeringTeam) {
     ctx.toast('info', '⚖️ Bitte werten: richtig oder falsch?');
   }
 }

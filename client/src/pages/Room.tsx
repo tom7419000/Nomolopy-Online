@@ -54,6 +54,7 @@ function ShareRow({ code }: { code: string }) {
 export function RoomPage() {
   const room = useStore((s) => s.room)!;
   const LobbySettings = CLIENT_GAMES[room.meta.gameId].LobbySettings;
+  const LobbyExtras = CLIENT_GAMES[room.meta.gameId].LobbyExtras;
   const game = useStore((s) => s.game);
   const session = useStore((s) => s.session);
   const [busy, setBusy] = useState(false);
@@ -133,6 +134,9 @@ export function RoomPage() {
           {room.spectators.length > 0 && (
             <p className="hint">👁 Zuschauer: {room.spectators.map((s) => s.name).join(', ')}</p>
           )}
+          {/* Spielspezifisch und ausdrücklich NICHT host-gesperrt – Jeopardys
+              Teams sucht sich jeder selbst aus. */}
+          {LobbyExtras && <LobbyExtras />}
           <p className="hint">
             Lade Freunde mit dem Link oben ein – sie landen direkt in diesem Raum.
           </p>

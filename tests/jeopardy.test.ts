@@ -15,11 +15,16 @@ import {
   addJeopardyPlayer,
   applyJeopardyAction,
   createJeopardy,
+  getJeopardyPlayer,
   jeopardyDeadline,
   jeopardyTick,
   jeopardyView,
+  membersOf,
+  resetJeopardyToLobby,
   ROWS,
   startJeopardy,
+  teamLabel,
+  teamOf,
 } from '../shared/jeopardy/engine';
 import { BUZZ_GRACE_MS, DEFAULT_JEOPARDY_RULES, MIN_REACTION_MS } from '../shared/jeopardy/rules';
 import type { JeopardyAction, JeopardyState } from '../shared/jeopardy/types';
@@ -76,8 +81,16 @@ function act(s: JeopardyState, playerId: string, action: JeopardyAction, now = 1
   return applyJeopardyAction(s, playerId, action, PACK, now);
 }
 
-/** Der Spieler, der gerade wählen darf. */
-const picker = (s: JeopardyState) => s.players[s.pickerIndex].id;
+/**
+ * Ein Spieler aus dem Team, das gerade wählen darf.
+ *
+ * Ohne eigene Teams ist jeder sein eigenes – die Tests unten sehen also
+ * dasselbe wie vorher, obwohl die Wahl inzwischen am Team hängt.
+ */
+const picker = (s: JeopardyState) => membersOf(s, s.pickerTeamId!)[0].id;
+
+/** Punktestand des Teams, in dem dieser Spieler ist. */
+const score = (s: JeopardyState, playerId: string) => teamOf(s, playerId)!.score;
 
 /** Das erste freie Feld wählen (immer erlaubt) und die Frage stellen. */
 function pick(s: JeopardyState, col = 0, row = 0, now = 1000) {
@@ -212,7 +225,7 @@ test('Buzzert niemand, läuft die Frage aus und wird aufgelöst', () => {
   assert.equal(jeopardyTick(s, clue.deadline!, PACK), true);
   assert.equal(s.clue!.step, 'revealed');
   assert.equal(s.clue!.answer, clue.questionId!, 'die Auflösung steht');
-  assert.equal(s.players.every((p) => p.score === 0), true, 'niemand bekommt Punkte');
+  assert.equal(s.teams.every((t) => t.score === 0), true, 'niemand bekommt Punkte');
 });
 
 // ---------------------------------------------------------------------------
@@ -249,7 +262,7 @@ test('Eine richtige Antwort bringt Punkte, und der Antwortende wählt weiter', (
   act(s, 'p2', { type: 'judge', correct: true }, t);
 
   assert.equal(s.clue!.step, 'revealed');
-  assert.equal(s.players.find((p) => p.id === 'p1')!.score, clue.value);
+  assert.equal(score(s, 'p1'), clue.value);
   assert.equal(picker(s), 'p1', 'wer richtig lag, wählt das nächste Feld');
 });
 
@@ -263,7 +276,7 @@ test('Die Mitspieler können den Vorschlag überstimmen', () => {
   // Die Runde lässt es trotzdem gelten (Mehrheit schlägt Vorschlag).
   act(s, 'p0', { type: 'judge', correct: true }, t);
   act(s, 'p2', { type: 'judge', correct: true }, t);
-  assert.equal(s.players.find((p) => p.id === 'p1')!.score > 0, true);
+  assert.equal(score(s, 'p1') > 0, true);
 });
 
 test('Über die eigene Antwort stimmt niemand ab', () => {
@@ -282,8 +295,8 @@ test('Falsch geantwortet: Abzug, Sperre, und der Buzzer geht für den Rest wiede
   act(s, 'p0', { type: 'judge', correct: false }, t);
   act(s, 'p2', { type: 'judge', correct: false }, t);
 
-  assert.equal(s.players.find((p) => p.id === 'p1')!.score, -clue.value, 'Minuspunkte');
-  assert.deepEqual(s.clue!.lockedOut, ['p1']);
+  assert.equal(score(s, 'p1'), -clue.value, 'Minuspunkte');
+  assert.deepEqual(s.clue!.lockedOut, [teamOf(s, 'p1')!.id], 'gesperrt ist sein Team');
   assert.equal(s.clue!.step, 'buzzing', 'die anderen dürfen noch');
   assert.equal(s.clue!.answererId, null);
   assert.equal(act(s, 'p1', { type: 'buzz' }, t + 10).ok, false, 'p1 hatte seinen Versuch');
@@ -295,8 +308,8 @@ test('Ohne Abzug kostet eine falsche Antwort keine Punkte', () => {
   pick(s);
   const t = buzzedIn(s);
   act(s, 'p1', { type: 'answer', text: '' }, t);
-  assert.equal(s.players.find((p) => p.id === 'p1')!.score, 0);
-  assert.deepEqual(s.clue!.lockedOut, ['p1']);
+  assert.equal(score(s, 'p1'), 0);
+  assert.deepEqual(s.clue!.lockedOut, [teamOf(s, 'p1')!.id], 'gesperrt ist sein Team');
 });
 
 test('Sind alle gesperrt, wird aufgelöst', () => {
@@ -321,7 +334,7 @@ test('Eine leere Antwort geht ohne Abstimmung als falsch durch', () => {
   const t = buzzedIn(s);
   act(s, 'p1', { type: 'answer', text: '   ' }, t);
   assert.equal(s.clue!.step, 'buzzing', 'direkt zurück zum Buzzer, ohne Wertungsrunde');
-  assert.deepEqual(s.clue!.lockedOut, ['p1']);
+  assert.deepEqual(s.clue!.lockedOut, [teamOf(s, 'p1')!.id], 'gesperrt ist sein Team');
 });
 
 test('Wertet niemand rechtzeitig, greift der Vorschlag', () => {
@@ -332,7 +345,7 @@ test('Wertet niemand rechtzeitig, greift der Vorschlag', () => {
 
   const deadline = s.clue!.deadline!;
   assert.equal(jeopardyTick(s, deadline, PACK), true);
-  assert.equal(s.players.find((p) => p.id === 'p1')!.score, clue.value);
+  assert.equal(score(s, 'p1'), clue.value);
 });
 
 test('Gleichstand in der Wertung geht zugunsten des Spielers', () => {
@@ -345,7 +358,7 @@ test('Gleichstand in der Wertung geht zugunsten des Spielers', () => {
   act(s, 'p2', { type: 'judge', correct: false }, t);
   act(s, 'p3', { type: 'judge', correct: true }, t);
   // 2:1 – aber selbst 1:1 hätte gereicht.
-  assert.equal(s.players.find((p) => p.id === 'p1')!.score, clue.value);
+  assert.equal(score(s, 'p1'), clue.value);
 });
 
 test('Wer nicht antwortet, verliert den Zug an der Uhr', () => {
@@ -355,8 +368,8 @@ test('Wer nicht antwortet, verliert den Zug an der Uhr', () => {
   const deadline = s.clue!.deadline!;
 
   assert.equal(jeopardyTick(s, deadline, PACK), true);
-  assert.equal(s.players.find((p) => p.id === 'p1')!.score, -clue.value);
-  assert.deepEqual(s.clue!.lockedOut, ['p1']);
+  assert.equal(score(s, 'p1'), -clue.value);
+  assert.deepEqual(s.clue!.lockedOut, [teamOf(s, 'p1')!.id], 'gesperrt ist sein Team');
   assert.ok(t < deadline);
 });
 
@@ -399,8 +412,8 @@ test('Die Redaktion verändert den echten Zustand nicht', () => {
 
 test('Ist das Brett leer, endet die Partie und der Beste gewinnt', () => {
   const s = game(['Anna', 'Ben']);
-  s.players[0].score = 700;
-  s.players[1].score = 300;
+  teamOf(s, 'p0')!.score = 700;
+  teamOf(s, 'p1')!.score = 300;
 
   // Alle dreißig Felder durchspielen, ohne dass jemand buzzert.
   for (let col = 0; col < s.board.length; col++) {
@@ -414,7 +427,7 @@ test('Ist das Brett leer, endet die Partie und der Beste gewinnt', () => {
   }
 
   assert.equal(s.phase, 'ended');
-  assert.equal(s.winnerId, 'p0');
+  assert.equal(s.winnerTeamId, teamOf(s, 'p0')!.id);
   assert.equal(s.clue, null);
 });
 
@@ -467,7 +480,7 @@ test('Lokal genügt ein Tipp zum Werten – sonst hinge die Runde ohne Uhr', () 
 
   act(s, 'p0', { type: 'judge', correct: true }, 1700);
   assert.equal(s.clue!.step, 'revealed', 'kein Warten auf die zweite Stimme');
-  assert.equal(s.players.find((p) => p.id === 'p1')!.score, clue.value);
+  assert.equal(score(s, 'p1'), clue.value);
 });
 
 test('Auch die Frage-Kennung verlässt den Server erst bei der Auflösung', () => {
@@ -589,7 +602,7 @@ test('Der Moderator wertet allein', () => {
 
   assert.equal(act(s, 'p0', { type: 'judge', correct: true }, 2500).ok, true);
   assert.equal(s.clue!.step, 'revealed', 'seine Stimme genügt');
-  assert.equal(s.players.find((p) => p.id === 'p1')!.score, s.clue!.value);
+  assert.equal(score(s, 'p1'), s.clue!.value);
 });
 
 test('Der Moderator löst auf und führt weiter', () => {
@@ -608,7 +621,9 @@ test('Der Moderator löst auf und führt weiter', () => {
 
 test('Der Moderator steht nicht in der Wertung', () => {
   const s = show();
-  s.players[0].score = 9999; // käme er in die Wertung, gewänne er
+  // Er ist in keinem Team – gäbe es eins, gewänne er hiermit.
+  assert.equal(s.players[0].teamId, '');
+  assert.equal(s.teams.length, 2, 'nur die beiden Mitspieler haben Teams');
   act(s, 'p0', { type: 'pick', col: 0, row: 0 });
   // Das letzte Feld: danach ist Schluss, und es wird abgerechnet.
   for (const col of s.board) col.used = col.used.map(() => true);
@@ -616,7 +631,10 @@ test('Der Moderator steht nicht in der Wertung', () => {
   act(s, 'p0', { type: 'next' }, 3000);
 
   assert.equal(s.phase, 'ended');
-  assert.notEqual(s.winnerId, 'p0', 'der Moderator gewinnt seine eigene Sendung nicht');
+  assert.ok(
+    s.teams.some((t) => t.id === s.winnerTeamId),
+    'gewonnen hat ein Team von Mitspielern'
+  );
 });
 
 test('Ist der Moderator weg, gelten wieder die normalen Regeln', () => {
@@ -636,4 +654,178 @@ test('Die Ansicht verrät den Moderator, aber nicht die Antwort', () => {
   assert.equal(v.players[0].moderator, true);
   assert.equal(v.clue!.answer, null);
   assert.equal(v.clue!.questionId, null);
+});
+
+// ---------------------------------------------------------------------------
+// Teams
+// ---------------------------------------------------------------------------
+
+/**
+ * Eine Lobby, noch nicht gestartet – Teams werden im Wartezimmer gebildet.
+ *
+ * Der Weg dorthin ist `applyJeopardyAction`, obwohl nichts läuft: Die
+ * Team-Aktionen stehen bewusst VOR der Phasenprüfung, weil `game:action` der
+ * einzige Kanal ist, den auch ein Nicht-Host benutzen darf.
+ */
+function lobby(names = ['Anna', 'Ben', 'Clara', 'Dirk']) {
+  const state = createJeopardy('TEST', { ...DEFAULT_JEOPARDY_RULES, packId: PACK.id, readSeconds: 0 });
+  names.forEach((n, i) => addJeopardyPlayer(state, `p${i}`, n, i === 0));
+  return state;
+}
+
+/** Die beiden zu einem Team zusammenlegen, dann starten. */
+function teamGame(pairs: string[][] = [['p0', 'p1'], ['p2', 'p3']]) {
+  const s = lobby();
+  for (const [first, ...rest] of pairs) {
+    for (const other of rest) {
+      const r = act(s, other, { type: 'joinTeam', teamId: teamOf(s, first)!.id });
+      assert.equal(r.ok, true, r.error);
+    }
+  }
+  const r = startJeopardy(s, PACK, 1000);
+  assert.equal(r.ok, true, r.error);
+  return s;
+}
+
+test('Wer dazukommt, ist erst mal sein eigenes Team', () => {
+  const s = lobby(['Anna', 'Ben']);
+  assert.equal(s.teams.length, 2);
+  assert.equal(teamLabel(s, teamOf(s, 'p0')!), 'Anna', 'allein heißt das Team wie der Spieler');
+  assert.notEqual(s.players[0].teamId, s.players[1].teamId);
+});
+
+test('Team beitreten, verlassen – und leere Teams verschwinden', () => {
+  const s = lobby(['Anna', 'Ben']);
+  const annas = teamOf(s, 'p0')!.id;
+
+  assert.equal(act(s, 'p1', { type: 'joinTeam', teamId: annas }).ok, true);
+  assert.equal(s.teams.length, 1, 'Bens leeres Team ist weg');
+  assert.equal(teamLabel(s, s.teams[0]), 'Anna & Ben', 'der Name wächst mit');
+
+  assert.equal(act(s, 'p1', { type: 'newTeam' }).ok, true);
+  assert.equal(s.teams.length, 2);
+  assert.equal(teamLabel(s, teamOf(s, 'p1')!), 'Ben');
+  assert.equal(act(s, 'p1', { type: 'newTeam' }).ok, false, 'allein ist allein');
+});
+
+test('Ein Team lässt sich umbenennen, und leer zurücksetzen', () => {
+  const s = lobby(['Anna', 'Ben']);
+  const annas = teamOf(s, 'p0')!.id;
+  act(s, 'p1', { type: 'joinTeam', teamId: annas });
+
+  assert.equal(act(s, 'p1', { type: 'renameTeam', teamId: annas, name: 'Die Schlauberger' }).ok, true);
+  assert.equal(teamLabel(s, s.teams[0]), 'Die Schlauberger');
+  act(s, 'p1', { type: 'renameTeam', teamId: annas, name: '  ' });
+  assert.equal(teamLabel(s, s.teams[0]), 'Anna & Ben', 'leer heißt wieder ableiten');
+});
+
+test('Der Host teilt die Runde auf zwei Teams auf', () => {
+  const s = lobby();
+  assert.equal(act(s, 'p1', { type: 'splitTeams' }).ok, false, 'nur der Host');
+  assert.equal(act(s, 'p0', { type: 'splitTeams' }).ok, true);
+
+  assert.equal(s.teams.length, 2);
+  // Abwechselnd, nicht in Blöcken.
+  assert.equal(s.players[0].teamId, s.players[2].teamId);
+  assert.equal(s.players[1].teamId, s.players[3].teamId);
+  assert.notEqual(s.players[0].teamId, s.players[1].teamId);
+});
+
+test('Mit nur einem Team lässt sich nicht starten', () => {
+  const s = lobby(['Anna', 'Ben']);
+  act(s, 'p1', { type: 'joinTeam', teamId: teamOf(s, 'p0')!.id });
+
+  const r = startJeopardy(s, PACK, 1000);
+  assert.equal(r.ok, false);
+  assert.match(r.error ?? '', /zwei Teams/);
+});
+
+test('Punkte gehen aufs Team, nicht auf die Person', () => {
+  const s = teamGame();
+  const clue = pick(s);
+
+  const t = buzzedIn(s, 'p0');
+  act(s, 'p0', { type: 'answer', text: solution(s) }, t);
+  // Werten darf nur das ANDERE Team – Ben ist bei Anna im Team.
+  assert.equal(act(s, 'p1', { type: 'judge', correct: true }, t).ok, false, 'nicht über die eigenen Punkte');
+  act(s, 'p2', { type: 'judge', correct: true }, t);
+  act(s, 'p3', { type: 'judge', correct: true }, t);
+
+  assert.equal(teamOf(s, 'p0')!.score, clue.value);
+  assert.equal(teamOf(s, 'p1')!.score, clue.value, 'Ben steht am selben Punktestand');
+  assert.equal(teamOf(s, 'p2')!.score, 0);
+});
+
+test('Gesperrt wird das Team – der Kollege bekommt keinen zweiten Versuch', () => {
+  const s = teamGame();
+  const clue = pick(s);
+
+  const t = buzzedIn(s, 'p0');
+  act(s, 'p0', { type: 'answer', text: 'daneben' }, t);
+  act(s, 'p2', { type: 'judge', correct: false }, t);
+  act(s, 'p3', { type: 'judge', correct: false }, t);
+
+  assert.deepEqual(s.clue!.lockedOut, [teamOf(s, 'p0')!.id], 'das Team steht drin, nicht die Person');
+  assert.equal(teamOf(s, 'p0')!.score, -clue.value, 'der Abzug trifft das Team');
+  assert.equal(s.clue!.step, 'buzzing', 'für das andere Team geht der Buzzer wieder auf');
+  assert.equal(act(s, 'p1', { type: 'buzz' }, t + 100).ok, false, 'Bens Team hatte seinen Versuch');
+  assert.equal(act(s, 'p2', { type: 'buzz' }, t + 100).ok, true);
+});
+
+test('Liegen beide Teams daneben, ist die Frage vorbei', () => {
+  const s = teamGame();
+  pick(s);
+  let t = buzzedIn(s, 'p0', 1500);
+  pickAnswerWrong(s, 'p0', ['p2', 'p3'], t);
+  assert.equal(s.clue!.step, 'buzzing');
+
+  t = buzzedIn(s, 'p2', t + 500);
+  pickAnswerWrong(s, 'p2', ['p0', 'p1'], t);
+  assert.equal(s.clue!.step, 'revealed', 'niemand darf mehr buzzern');
+});
+
+/** Antworten, vom anderen Team als falsch gewertet werden. */
+function pickAnswerWrong(s: JeopardyState, who: string, judges: string[], t: number) {
+  act(s, who, { type: 'answer', text: 'daneben' }, t);
+  for (const j of judges) act(s, j, { type: 'judge', correct: false }, t);
+}
+
+test('Gewählt wird reihum über die Teams', () => {
+  const s = teamGame();
+  const red = teamOf(s, 'p0')!.id;
+  const blue = teamOf(s, 'p2')!.id;
+  s.pickerTeamId = red;
+
+  // Jedes Mitglied des Teams darf tippen, keiner vom anderen.
+  assert.equal(act(s, 'p2', { type: 'pick', col: 0, row: 0 }).ok, false);
+  assert.equal(act(s, 'p1', { type: 'pick', col: 0, row: 0 }).ok, true, 'auch der Kollege wählt');
+
+  // Blau antwortet richtig → Blau wählt weiter.
+  const t = buzzedIn(s, 'p3', 1500);
+  act(s, 'p3', { type: 'answer', text: solution(s) }, t);
+  act(s, 'p0', { type: 'judge', correct: true }, t);
+  act(s, 'p1', { type: 'judge', correct: true }, t);
+  assert.equal(s.pickerTeamId, blue);
+});
+
+test('Ist von einem Team niemand mehr da, rückt das nächste nach', () => {
+  const s = teamGame();
+  s.pickerTeamId = teamOf(s, 'p0')!.id;
+  pick(s, 0, 0);
+  act(s, picker(s), { type: 'skip' }, 1500);
+
+  for (const id of ['p0', 'p1']) getJeopardyPlayer(s, id)!.connected = false;
+  act(s, 'p2', { type: 'next' }, 1600);
+  assert.equal(s.pickerTeamId, teamOf(s, 'p2')!.id, 'sonst stünde das Brett still');
+});
+
+test('Eine neue Runde behält die Teams und löscht die Punkte', () => {
+  const s = teamGame();
+  teamOf(s, 'p0')!.score = 800;
+  const before = s.teams.map((t) => t.id);
+
+  resetJeopardyToLobby(s);
+  assert.deepEqual(s.teams.map((t) => t.id), before, 'wer zusammengespielt hat, bleibt zusammen');
+  assert.equal(s.teams.every((t) => t.score === 0), true);
+  assert.equal(s.pickerTeamId, null);
 });

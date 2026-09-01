@@ -60,6 +60,28 @@ export interface JeopardyRules {
   moderated: boolean;
 }
 
+/**
+ * Ein Team – und es gibt IMMER Teams.
+ *
+ * Wer allein spielt, ist ein Team mit einem Mitglied und heißt wie er selbst;
+ * das sieht aus wie vorher, aber es gibt nur einen Codepfad. Ein zweites Feld
+ * „Team-Punktestand" neben `JeopardyPlayer.score` hätte jede Anzeige und jede
+ * Wertung verzweigt.
+ */
+export interface JeopardyTeam {
+  id: string;
+  /**
+   * Eigener Name, oder leer.
+   *
+   * Leer heißt „aus den Mitgliedern ableiten" (`teamLabel`): allein der Name
+   * des Spielers, zu zweit „Anna & Ben". Damit stimmt der Name automatisch,
+   * wenn jemand dazukommt oder geht — bis ihn einmal jemand überschreibt.
+   */
+  name: string;
+  color: string;
+  score: number;
+}
+
 export interface JeopardyPlayer {
   id: string;
   name: string;
@@ -68,7 +90,8 @@ export interface JeopardyPlayer {
   avatar: string;
   isHost: boolean;
   connected: boolean;
-  score: number;
+  /** Sein Team. Leer nur beim Moderator: der spielt nicht mit. */
+  teamId: string;
   /** Moderiert nur: kein Punktestand, kein Buzzer, zählt nicht als Mitspieler. */
   moderator: boolean;
 }
@@ -113,9 +136,14 @@ export interface JeopardyClue {
   submitted: string | null;
   /** Vorschlag der automatischen Vorprüfung – den Richtern vorausgewählt. */
   suggestion: boolean | null;
-  /** Wer diese Frage schon falsch beantwortet hat und nicht mehr darf. */
+  /**
+   * TEAM-IDs, die diese Frage schon falsch beantwortet haben.
+   *
+   * Absichtlich das Team und nicht die Person: Sonst hätte ein Dreierteam
+   * drei Versuche auf dieselbe Frage, während ein Alleinspieler einen hat.
+   */
   lockedOut: string[];
-  /** Wertung der Mitspieler: playerId → richtig? */
+  /** Wertung der Mitspieler: playerId → richtig? Gezählt wird pro Person. */
   votes: Record<string, boolean>;
   /** Ergebnis der Wertung, sobald sie steht. */
   correct: boolean | null;
@@ -130,18 +158,21 @@ export interface JeopardyState {
   phase: JeopardyPhase;
   rules: JeopardyRules;
   players: JeopardyPlayer[];
+  /** Jeder Mitspieler ist in genau einem – notfalls allein. */
+  teams: JeopardyTeam[];
   /** Sechs Spalten – so viele Kategorien hat das Fragenformat. */
   board: JeopardyColumn[];
   /** Schon gestellte Fragen, damit sich in einer Partie nichts wiederholt. */
   usedQuestionIds: string[];
-  /** Wer das nächste Feld wählt (Index in `players`). */
-  pickerIndex: number;
+  /** Welches TEAM das nächste Feld wählt; jedes Mitglied darf tippen. */
+  pickerTeamId: string | null;
   clue: JeopardyClue | null;
   /** Am gemeinsamen Gerät gibt es keine Uhren und keinen Buzzer. */
   local: boolean;
   log: LogEntry[];
   chat: ChatMessage[];
-  winnerId: string | null;
+  /** Das siegreiche TEAM. */
+  winnerTeamId: string | null;
   seq: number;
 }
 
@@ -155,7 +186,21 @@ export interface JeopardyState {
 export type JeopardyView = JeopardyState;
 
 export type JeopardyAction =
-  /** Feld wählen – nur der Picker. */
+  /**
+   * Wartezimmer: Team wechseln, neues Team aufmachen, Team umbenennen,
+   * oder (Host) die Runde auf zwei Teams aufteilen.
+   *
+   * Diese vier laufen im Wartezimmer, also VOR der Phasenprüfung in
+   * `applyJeopardyAction`. Der Weg dorthin ist `game:action` – der prüft
+   * selbst keine Phase, nur ob jemand Zuschauer ist. `lobby:configure` wäre
+   * der falsche Weg: Der ist host-gesperrt, und sein Team sucht sich jeder
+   * selbst aus.
+   */
+  | { type: 'joinTeam'; teamId: string }
+  | { type: 'newTeam' }
+  | { type: 'renameTeam'; teamId: string; name: string }
+  | { type: 'splitTeams' }
+  /** Feld wählen – nur das Team, das dran ist. */
   | { type: 'pick'; col: number; row: number }
   /**
    * Buzzer drücken – alle außer den schon Gesperrten.

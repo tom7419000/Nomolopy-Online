@@ -495,6 +495,164 @@ async function main() {
     for (const p of guests) await p.locator('.jeo-buzzer').waitFor();
     console.log('✔ … und wer schneller fertig vorgelesen hat, kürzt mit „Sofort öffnen" ab');
 
+    // --- Zwei Teams zu je zwei Handys ----------------------------------------
+    //
+    // Der Aufbau, für den Schritt 9 gebaut ist: jeder hat sein Handy, der
+    // Fernseher zeigt das Brett, aber gewertet wird pro TEAM. Gebuzzert wird
+    // weiter einzeln – nur Punkte und Sperre gehören dem Team.
+    const teamNames = ['Eva', 'Finn', 'Gia', 'Hans'] as const;
+    const teamPages: Record<string, Page> = {};
+    for (const n of teamNames) {
+      const ctx = await browser.newContext({ viewport: phone });
+      ctx.setDefaultTimeout(15_000);
+      const page = await ctx.newPage();
+      page.on('pageerror', (e) => fail(`Seite ${n}: JS-Fehler: ${e.message}`));
+      teamPages[n] = page;
+    }
+    const ctxTv2 = await browser.newContext({ viewport: tv });
+    ctxTv2.setDefaultTimeout(15_000);
+    const tv2 = await ctxTv2.newPage();
+    tv2.on('pageerror', (e) => fail(`Team-Fernseher: JS-Fehler: ${e.message}`));
+
+    const eva = teamPages.Eva;
+    await eva.goto(BASE);
+    await eva.getByPlaceholder('z. B. Alex').fill('Eva');
+    await eva.locator('.game-choice.game-jeopardy').getByRole('button', { name: 'Raum erstellen' }).click();
+    await eva.getByText(/300 Fragen/).waitFor();
+    await eva.getByRole('button', { name: '🎯 Raum erstellen' }).click();
+    await eva.locator('.room-code strong').waitFor();
+    const teamCode = (await eva.locator('.room-code strong').textContent())!.trim();
+
+    for (const n of teamNames.slice(1)) {
+      await teamPages[n].goto(`${BASE}/#/room/${teamCode}`);
+      await teamPages[n].getByPlaceholder('z. B. Alex').fill(n);
+      await teamPages[n].getByRole('button', { name: 'Beitreten' }).click();
+      await eva.locator('.lobby-players li', { hasText: n }).waitFor();
+    }
+
+    // Ohne Vorlesezeit steht der Buzzer sofort offen – das spart Wartezeit.
+    const teamRead = eva.locator('.rule-row', { hasText: 'Vorlesezeit' }).locator('input');
+    await teamRead.fill('0');
+    await teamRead.blur();
+
+    // --- Vier Ein-Mann-Teams, dann aufteilen ---------------------------------
+    // Wer dazukommt, ist erst mal sein eigenes Team; ohne Teams sieht die
+    // Punktetafel deshalb genauso aus wie vorher.
+    if ((await eva.locator('.jeo-team').count()) !== 4) {
+      fail(`Im Wartezimmer stehen ${await eva.locator('.jeo-team').count()} Teams (erwartet 4 Ein-Mann-Teams).`);
+    }
+    await eva.getByRole('button', { name: '👥 Auf zwei Teams aufteilen' }).click();
+    await eva.locator('.jeo-team').nth(1).waitFor();
+    for (const n of teamNames) {
+      await teamPages[n].locator('.jeo-team').nth(1).waitFor();
+      const count = await teamPages[n].locator('.jeo-team').count();
+      if (count !== 2) fail(`${n} sieht ${count} Teams statt 2.`);
+    }
+    console.log('✔ Vier Ein-Mann-Teams, per Knopf auf zwei aufgeteilt');
+
+    // --- Umbenennen kommt bei allen an ---------------------------------------
+    const nameField = eva.locator('.jeo-team.mine .input').first();
+    await nameField.fill('Die Schlauberger');
+    await nameField.blur();
+    await teamPages.Finn.locator('.jeo-team', { hasText: 'Die Schlauberger' }).waitFor();
+    console.log('✔ Eigener Teamname steht sofort auf allen Handys');
+    await eva.screenshot({ path: `${SHOTS}/jeopardy-07-lobby-teams.png` });
+
+    // Abwechselnd aufgeteilt: Eva+Gia gegen Finn+Hans.
+    const mine = eva.locator('.jeo-team.mine');
+    await mine.locator('.jeo-team-member', { hasText: 'Gia' }).waitFor();
+    if ((await mine.locator('.jeo-team-member', { hasText: 'Finn' }).count()) !== 0) {
+      fail('Aufgeteilt wurde in Blöcken statt abwechselnd.');
+    }
+
+    await eva.getByRole('button', { name: '▶ Spiel starten' }).click();
+    for (const n of teamNames) await teamPages[n].locator('.game-table.jeopardy').waitFor();
+
+    await tv2.goto(`${BASE}/#/room/${teamCode}`);
+    await tv2.getByPlaceholder('z. B. Alex').fill('Fernseher');
+    await tv2.getByRole('button', { name: 'Beitreten' }).click();
+    await tv2.locator('.jeo-board').waitFor();
+
+    // --- Die Punktetafel zeigt Teams, nicht Personen -------------------------
+    const rows = await tv2.locator('.jeo-score').count();
+    if (rows !== 2) fail(`Die Punktetafel zeigt ${rows} Zeilen (erwartet 2 Teams).`);
+    await tv2.locator('.jeo-score', { hasText: 'Die Schlauberger' }).waitFor();
+    await tv2.locator('.jeo-score', { hasText: 'Finn & Hans' }).waitFor();
+    console.log('✔ Zwei Zeilen für zwei Teams – abgeleiteter Name neben dem eigenen');
+    await tv2.screenshot({ path: `${SHOTS}/jeopardy-08-teams.png` });
+
+    // --- Wählen darf das ganze Team ------------------------------------------
+    const allPhones = teamNames.map((n) => teamPages[n]);
+    await pickerPage(allPhones);
+    const mayPick: string[] = [];
+    for (const n of teamNames) {
+      if ((await teamPages[n].locator('.jeo-cell:not(:disabled)').count()) > 0) mayPick.push(n);
+    }
+    if (mayPick.length !== 2) fail(`${mayPick.length} Spieler dürfen wählen (erwartet ein ganzes Team).`);
+    const together =
+      (mayPick.includes('Eva') && mayPick.includes('Gia')) ||
+      (mayPick.includes('Finn') && mayPick.includes('Hans'));
+    if (!together) fail(`Wählen dürfen ${mayPick.join(' und ')} – das ist kein Team.`);
+    console.log(`✔ Wählen darf das ganze Team (${mayPick.join(' + ')}), nicht eine Person`);
+
+    // Der Kollege tippt, nicht der, dessen Team ausgelost wurde.
+    const [mate, partner] = mayPick;
+    const others = teamNames.filter((n) => !mayPick.includes(n));
+    await teamPages[partner].locator('.jeo-col').first().locator('.jeo-cell').nth(1).click();
+    for (const n of teamNames) await teamPages[n].locator('.jeo-prompt').waitFor();
+
+    // --- Falsch geantwortet: das TEAM verliert und ist gesperrt --------------
+    await teamPages[mate].locator('.jeo-buzzer').click();
+    const teamAnswerer = await answererPage(allPhones);
+    await teamAnswerer.locator('.jeo-answer-form .input').fill('Ganz sicher daneben');
+    await teamAnswerer.getByRole('button', { name: 'Abschicken' }).click();
+
+    // Werten darf nur das andere Team – der Kollege wäre Richter über die
+    // eigenen Punkte.
+    for (const n of others) await teamPages[n].locator('.jeo-judge').waitFor();
+    if (await teamPages[partner].locator('.jeo-judge').isVisible().catch(() => false)) {
+      fail(`${partner} darf über die Punkte des eigenen Teams abstimmen.`);
+    }
+    console.log('✔ Gewertet wird vom anderen Team, nicht vom Teamkollegen');
+
+    for (const n of others) await teamPages[n].getByRole('button', { name: '✗ Falsch' }).click();
+    await tv2.locator('.jeo-score strong.negative').waitFor();
+    const hitTeam = mayPick.includes('Eva') ? 'Die Schlauberger' : 'Finn & Hans';
+    if ((await scoreOf(tv2, hitTeam)) !== -200) {
+      fail(`${hitTeam} steht bei ${await scoreOf(tv2, hitTeam)} statt -200.`);
+    }
+    console.log(`✔ Der Abzug trifft das Team: ${hitTeam} bei −200`);
+
+    // --- Und der Kollege bekommt keinen zweiten Versuch ----------------------
+    for (const n of others) await teamPages[n].locator('.jeo-buzzer').waitFor();
+    if (await teamPages[partner].locator('.jeo-buzzer').isVisible().catch(() => false)) {
+      fail(`${partner} darf buzzern, obwohl sein Team schon danebenlag.`);
+    }
+    await teamPages[partner].getByText('Dein Team hatte seinen Versuch').waitFor();
+    console.log('✔ Gesperrt ist das Team – der Kollege hat keinen zweiten Versuch');
+
+    // --- Richtig: die Punkte gehen aufs Team, es wählt weiter ----------------
+    await teamPages[others[0]].locator('.jeo-buzzer').click();
+    const teamSecond = await answererPage(allPhones);
+    await teamSecond.locator('.jeo-answer-form .input').fill('Auch geraten');
+    await teamSecond.getByRole('button', { name: 'Abschicken' }).click();
+    for (const n of mayPick) await teamPages[n].getByRole('button', { name: '✓ Richtig' }).click();
+
+    const winTeam = hitTeam === 'Die Schlauberger' ? 'Finn & Hans' : 'Die Schlauberger';
+    await tv2.locator('.jeo-solution').waitFor();
+    if ((await scoreOf(tv2, winTeam)) !== 200) {
+      fail(`${winTeam} hat ${await scoreOf(tv2, winTeam)} statt 200 Punkte.`);
+    }
+    // Auch der Kollege, der gar nicht geantwortet hat, steht am Punktestand:
+    // Er schaltet auf die Brett-Ansicht und liest dieselbe Teamzeile.
+    const mateView = teamPages[others[1]];
+    await mateView.getByRole('button', { name: 'Brett-Ansicht' }).click();
+    await mateView.locator('.jeo-score.me', { hasText: winTeam }).waitFor();
+    if ((await scoreOf(mateView, winTeam)) !== 200) {
+      fail(`Der Kollege sieht ${await scoreOf(mateView, winTeam)} statt 200.`);
+    }
+    console.log(`✔ Die Punkte gehen aufs Team: ${winTeam} bei 200, auch beim Kollegen`);
+
     await browser.close();
     console.log('\n🎉 Jeopardy-E2E erfolgreich – Screenshots in ' + SHOTS);
     stopServer();

@@ -7,7 +7,7 @@ privaten oder öffentlichen Räumen spielst – aktuell mit vier Spielen:
 |---|---|---|---|
 | 🎲 | **Monopoly** | 2–8 | Originalregeln inkl. Auktionen, eigene Editionen (Berlin, München, USA …), Spielstände |
 | 🃏 | **Texas Hold'em Poker** | 2–9 | No-Limit, steigende Blinds, Side-Pots, Auto-Fold-Timer, Zuschauer-Modus |
-| 🎯 | **Jeopardy** | 2–8 | 300 deutsche Fragen, Brett auf dem Fernseher + Buzzer auf den Handys, wahlweise mit Moderator |
+| 🎯 | **Jeopardy** | 2–8 | 300 deutsche Fragen, Brett auf dem Fernseher + Buzzer auf den Handys, mit Teams, wahlweise mit Moderator |
 | 🧀 | **Trivial Pursuit** | 2–6 | Volles Rad mit 73 Feldern, Käsestücke, Schlussfrage in der Mitte |
 
 React + TypeScript im Frontend, Node.js + Socket.io als serverautoritatives
@@ -39,7 +39,7 @@ LAN einfach `http://<deine-IP>:3001` an die Mitspieler geben. Port per `PORT`,
 Datenverzeichnis (Editionen/Spielstände) per `DATA_DIR` konfigurierbar.
 
 ```bash
-npm test                                    # Unit-Tests aller Spiele und des lokalen Raums (177 Tests)
+npm test                                    # Unit-Tests aller Spiele und des lokalen Raums (188 Tests)
 npm run typecheck
 npm run build && npm run test:e2e           # Browser-E2E: Monopoly inkl. Auktion (Playwright)
 npm run build && npm run test:e2e:poker     # Browser-E2E: Poker inkl. Karten-Redaction
@@ -273,6 +273,31 @@ auseinanderfällt, zeigt das Raster beide Zahlen.
 - **Richtig**: Punkte und man wählt weiter. **Falsch**: Abzug (abschaltbar),
   gesperrt, und der Buzzer geht für die übrigen wieder auf.
 - Uhren für Vorlesezeit, Buzzer, Antwort und Wertung – alle einstellbar
+
+### 👥 Teams
+
+**Es gibt immer Teams.** Wer den Raum betritt, ist erst mal ein Team mit einem
+Mitglied, benannt nach sich selbst – das sieht aus wie ohne Teams, und es gibt
+nur einen Codepfad statt „mit Teams" und „ohne". Im Wartezimmer tritt man einem
+anderen bei, macht ein eigenes auf, benennt es um („Die Schlauberger"), oder der
+Host teilt die Runde per Knopf abwechselnd auf zwei Teams auf. Leere Teams
+verschwinden von selbst.
+
+Was daran am Team hängt und was an der Person:
+
+| | |
+|---|---|
+| **Punkte** | am Team. Der Kollege sieht denselben Punktestand |
+| **Wählen** | das Team ist dran, jedes Mitglied darf tippen |
+| **Sperre nach einer falschen Antwort** | am Team – sonst hätte ein Dreierteam drei Versuche auf dieselbe Frage und ein Alleinspieler einen |
+| **Werten** | wer *nicht* im Team des Antwortenden ist. Der Kollege wäre Richter über die eigenen Punkte |
+| **Buzzern** | an der Person. Das Rennen bleibt, wie es ist |
+
+Ein Team ohne eigenen Namen heißt nach seinen Mitgliedern („Anna & Ben") – so
+stimmt der Name automatisch, wenn jemand dazukommt oder geht. Ein leer
+abgeschicktes Namensfeld stellt darauf zurück.
+
+Eine neue Runde behält die Teams und löscht nur die Punkte.
 
 ### 🖥 Brett auf dem Fernseher, Buzzer auf den Handys
 
@@ -509,12 +534,12 @@ tests/
   poker.test.ts       19 Unit-Tests Poker (Rankings, Side-Pots, Blinds, Timeouts)
   local-room.test.ts  27 Unit-Tests lokaler Raum: Sitzrotation, Klon-Vertrag, Redaction
   trivia.test.ts      18 Unit-Tests Fragenformat, Ablenker, mitgeliefertes Paket
-  jeopardy.test.ts    40 Unit-Tests Jeopardy: Buzzer-Rennen, Sperre, Wertung, Moderator
+  jeopardy.test.ts    51 Unit-Tests Jeopardy: Buzzer-Rennen, Teams, Wertung, Moderator
   pursuit.test.ts     43 Unit-Tests Trivial Pursuit: Wegenetz, Bewegung, Käse, Finale
   e2e.ts              Browser-E2E Monopoly: 2 Spieler, Link-Beitritt, echtes Spiel
   e2e-poker.ts        Browser-E2E Poker: Showdown, Raise/Fold, Redaction, Zuschauer
   e2e-local.ts        Browser-E2E Pass & Play – mit abgeschaltetem Netz
-  e2e-jeopardy.ts     Browser-E2E Jeopardy: Fernseher, Moderator, zwei Handys, lokal
+  e2e-jeopardy.ts     Browser-E2E Jeopardy: Fernseher, Moderator, zwei Teams, lokal
   e2e-pursuit.ts      Browser-E2E Trivial Pursuit: Rad, Käsestück, Freitext lokal
 ```
 

@@ -21,6 +21,8 @@ import {
   jeopardyTick,
   jeopardyView,
   localAdjustJeopardy,
+  membersOf,
+  moderatorOf,
   removeJeopardyLobbyPlayer,
   resetJeopardyToLobby,
   startJeopardy,
@@ -117,14 +119,15 @@ export const jeopardyModule: GameModule<'jeopardy'> = {
    */
   activeSeatId(s) {
     if (s.phase !== 'playing') return null;
-    // Der Moderator ist nie „dran": er führt durch die Sendung, er spielt
-    // nicht mit. Deshalb bleibt der Picker die Anzeige – auch moderiert, wo
-    // er nur sagt, welches Feld er sich wünscht.
-    const picker = s.players[s.pickerIndex];
-    if (!s.clue) return picker?.moderator ? null : picker?.id ?? null;
-    if (s.clue.step === 'answering') return s.clue.answererId;
-    if (s.clue.step === 'revealed') return picker?.moderator ? null : picker?.id ?? null;
-    return null;
+    if (s.clue && s.clue.step === 'answering') return s.clue.answererId;
+    if (s.clue && s.clue.step !== 'revealed') return null;
+    // Dran ist ein TEAM, nicht eine Person. Nur wenn es aus genau einem
+    // besteht, gibt es einen Sitz zu nennen – und genau das ist der Fall am
+    // gemeinsamen Gerät, wo diese Antwort die Identität weiterreicht.
+    // Moderiert wählt ohnehin er, und der ist nie „dran".
+    if (moderatorOf(s)) return null;
+    const members = s.pickerTeamId ? membersOf(s, s.pickerTeamId) : [];
+    return members.length === 1 ? members[0].id : null;
   },
 
   setConnected(s, id, connected) {

@@ -19,7 +19,7 @@
  */
 
 import type { ChatMessage, LogEntry } from '../types';
-import { PLAYER_COLORS } from '../util';
+import { PLAYER_COLORS, randomId } from '../util';
 import { autoVerdict, drawQuestion, tallyVotes } from '../trivia/ask';
 import {
   checkPack,
@@ -41,6 +41,7 @@ import type {
   JeopardyPlayer,
   JeopardyRules,
   JeopardyState,
+  JeopardyTeam,
 } from './types';
 
 export const JEOPARDY_AVATARS = ['🎯', '💡', '🔔', '🧠', '📚', '🎓', '🔍', '⭐'];
@@ -75,14 +76,15 @@ export function createJeopardy(code: string, rules: JeopardyRules, now = Date.no
     phase: 'lobby',
     rules,
     players: [],
+    teams: [],
     board: [],
     usedQuestionIds: [],
-    pickerIndex: 0,
+    pickerTeamId: null,
     clue: null,
     local: false,
     log: [],
     chat: [],
-    winnerId: null,
+    winnerTeamId: null,
     seq: 1,
   };
 }
@@ -136,26 +138,52 @@ export function addJeopardyPlayer(
   const i = state.players.length;
   // Nur der Ersteller moderiert, und nur wenn der Raum so angelegt wurde.
   const moderator = state.rules.moderated && isHost && i === 0;
+  const color =
+    PLAYER_COLORS.find((c) => !usedColors.has(c)) ?? PLAYER_COLORS[i % PLAYER_COLORS.length];
   state.players.push({
     id,
     name,
-    color: PLAYER_COLORS.find((c) => !usedColors.has(c)) ?? PLAYER_COLORS[i % PLAYER_COLORS.length],
+    color,
     avatar: moderator
       ? '🎙'
       : JEOPARDY_AVATARS.find((a) => !usedAvatars.has(a)) ?? JEOPARDY_AVATARS[i % JEOPARDY_AVATARS.length],
     isHost,
     connected: true,
-    score: 0,
+    // Wer dazukommt, ist erst mal sein eigenes Team – so sieht es aus wie
+    // ohne Teams, und wer zusammenspielen will, tritt einem bei.
+    teamId: moderator ? '' : newTeamFor(state, color),
     moderator,
   });
   jeopardyLog(state, 'system', moderator ? `🎙 ${name} moderiert.` : `${name} ist dabei.`, id);
   return ok;
 }
 
+/** Legt ein leeres Team an und liefert seine ID. */
+function newTeamFor(state: JeopardyState, color: string): string {
+  const team: JeopardyTeam = { id: randomId(8), name: '', color, score: 0 };
+  state.teams.push(team);
+  return team.id;
+}
+
+/**
+ * Teams ohne Mitglieder verschwinden.
+ *
+ * Sonst sammelten sich beim Wechseln leere Hüllen an, die in der Punktetafel
+ * und in der Wahlreihenfolge mitliefen.
+ */
+function pruneTeams(state: JeopardyState): void {
+  const used = new Set(state.players.filter((p) => !p.moderator).map((p) => p.teamId));
+  state.teams = state.teams.filter((t) => used.has(t.id));
+  if (state.pickerTeamId && !used.has(state.pickerTeamId)) {
+    state.pickerTeamId = state.teams[0]?.id ?? null;
+  }
+}
+
 export function removeJeopardyLobbyPlayer(state: JeopardyState, id: string): void {
   const p = getJeopardyPlayer(state, id);
   if (!p || state.phase !== 'lobby') return;
   state.players = state.players.filter((x) => x.id !== id);
+  pruneTeams(state);
   jeopardyLog(state, 'system', `${p.name} ist wieder weg.`);
   if (p.isHost && state.players.length > 0) {
     state.players[0].isHost = true;
@@ -183,6 +211,9 @@ export function startJeopardy(
   if (contestants(state).length < JEOPARDY_MIN_PLAYERS) {
     return err(`Mindestens ${JEOPARDY_MIN_PLAYERS} Mitspieler nötig.`);
   }
+  pruneTeams(state);
+  // Ein einziges Team spielte gegen sich selbst.
+  if (state.teams.length < 2) return err('Mindestens zwei Teams nötig – teilt euch auf.');
   if (!pack) return err('Das gewählte Fragenpaket gibt es nicht mehr.');
 
   // Dieselbe Prüfung, die der Editor rot einfärbt: ein Fach ohne Fragen
@@ -200,18 +231,18 @@ export function startJeopardy(
   state.board = buildBoard();
   state.usedQuestionIds = [];
   state.clue = null;
-  state.winnerId = null;
-  for (const p of state.players) p.score = 0;
-  const first = contestants(state)[Math.floor(Math.random() * contestants(state).length)];
-  setPicker(state, first.id);
+  state.winnerTeamId = null;
+  for (const t of state.teams) t.score = 0;
+  const first = state.teams[Math.floor(Math.random() * state.teams.length)];
+  state.pickerTeamId = first.id;
 
   jeopardyLog(state, 'system', `🎯 Jeopardy gestartet – Fragen aus „${pack.name}".`);
   jeopardyLog(
     state,
     'info',
     moderatorOf(state)
-      ? `${moderatorOf(state)!.name} moderiert. ${first.name} darf sich das erste Feld wünschen.`
-      : `${first.name} wählt das erste Feld.`
+      ? `${moderatorOf(state)!.name} moderiert. ${teamLabel(state, first)} darf sich das erste Feld wünschen.`
+      : `${teamLabel(state, first)} wählt das erste Feld.`
   );
   return ok;
 }
@@ -221,22 +252,43 @@ export function resetJeopardyToLobby(state: JeopardyState): void {
   state.board = [];
   state.usedQuestionIds = [];
   state.clue = null;
-  state.winnerId = null;
-  state.pickerIndex = 0;
-  for (const p of state.players) p.score = 0;
+  state.winnerTeamId = null;
+  state.pickerTeamId = null;
+  // Die Teams selbst bleiben: Wer für eine Runde zusammengespielt hat, will
+  // das in der nächsten meistens auch.
+  for (const t of state.teams) t.score = 0;
 }
 
 // ---------------------------------------------------------------------------
-// Kleine Helfer
+// Teams
 // ---------------------------------------------------------------------------
 
-function picker(state: JeopardyState): JeopardyPlayer | undefined {
-  return state.players[state.pickerIndex];
+export function teamOf(state: JeopardyState, playerId: string): JeopardyTeam | undefined {
+  const p = getJeopardyPlayer(state, playerId);
+  return p ? state.teams.find((t) => t.id === p.teamId) : undefined;
 }
 
-function setPicker(state: JeopardyState, playerId: string): void {
-  const i = state.players.findIndex((p) => p.id === playerId);
-  if (i >= 0) state.pickerIndex = i;
+export function membersOf(state: JeopardyState, teamId: string): JeopardyPlayer[] {
+  return state.players.filter((p) => !p.moderator && p.teamId === teamId);
+}
+
+/**
+ * Wie das Team heißt – eigener Name oder aus den Mitgliedern gebaut.
+ *
+ * Allein steht damit einfach der Spielername da, wie vor den Teams; zu zweit
+ * „Anna & Ben". Kein Umbenennen nötig, damit es stimmt, und wer doch einen
+ * eigenen Namen will, überschreibt ihn im Wartezimmer.
+ */
+export function teamLabel(state: JeopardyState, team: JeopardyTeam): string {
+  if (team.name) return team.name;
+  const names = membersOf(state, team.id).map((p) => p.name);
+  if (names.length === 0) return 'Leeres Team';
+  if (names.length <= 3) return names.join(' & ');
+  return `${names.slice(0, 2).join(', ')} +${names.length - 2}`;
+}
+
+function pickerTeam(state: JeopardyState): JeopardyTeam | undefined {
+  return state.teams.find((t) => t.id === state.pickerTeamId);
 }
 
 /**
@@ -258,26 +310,36 @@ function contestants(state: JeopardyState): JeopardyPlayer[] {
  * Wer darf ein Feld wählen?
  *
  * Gibt es einen Moderator, führt er durch die Sendung und wählt allein.
- * Sonst der Picker – und ist DER getrennt, darf jeder, sonst stünde die
- * Partie still (anders als bei einem laufenden Zug gibt es hier keine Uhr,
- * die das auflösen könnte).
+ * Sonst JEDES Mitglied des Teams, das dran ist – wer von den beiden tippt,
+ * machen sie unter sich aus. Ist von dem Team niemand verbunden, darf jeder,
+ * sonst stünde die Partie still (anders als bei einem laufenden Zug gibt es
+ * hier keine Uhr, die das auflösen könnte).
  */
 function canPick(state: JeopardyState, playerId: string): boolean {
   const mod = moderatorOf(state);
   if (mod) return mod.id === playerId;
-  const p = picker(state);
-  if (!p) return false;
-  if (p.id === playerId) return true;
-  return !p.connected && state.players.some((x) => x.id === playerId);
-}
-
-/** Wer bei dieser Frage noch buzzern darf – der Moderator nie. */
-function eligibleBuzzers(state: JeopardyState, clue: JeopardyClue): JeopardyPlayer[] {
-  return contestants(state).filter((p) => p.connected && !clue.lockedOut.includes(p.id));
+  const team = pickerTeam(state);
+  if (!team) return false;
+  const members = membersOf(state, team.id);
+  if (members.some((p) => p.id === playerId)) return true;
+  return !members.some((p) => p.connected) && contestants(state).some((x) => x.id === playerId);
 }
 
 /**
- * Wer werten darf: alle Verbundenen außer dem, der geantwortet hat.
+ * Wer bei dieser Frage noch buzzern darf – der Moderator nie.
+ *
+ * Gesperrt ist das TEAM: Sonst hätte ein Dreierteam drei Versuche auf
+ * dieselbe Frage und ein Alleinspieler einen.
+ */
+function eligibleBuzzers(state: JeopardyState, clue: JeopardyClue): JeopardyPlayer[] {
+  return contestants(state).filter((p) => p.connected && !clue.lockedOut.includes(p.teamId));
+}
+
+/**
+ * Wer werten darf: alle Verbundenen, die nicht im Team des Antwortenden sind.
+ *
+ * Nicht bloß „außer dem Antwortenden": Sein Teamkollege wäre sonst Richter
+ * über die eigenen Punkte.
  *
  * Mit Moderator wertet ER allein – das ist das Sendungsformat und spart die
  * Abstimmungsrunde.
@@ -285,7 +347,8 @@ function eligibleBuzzers(state: JeopardyState, clue: JeopardyClue): JeopardyPlay
 function eligibleJudges(state: JeopardyState, clue: JeopardyClue): JeopardyPlayer[] {
   const mod = moderatorOf(state);
   if (mod) return [mod];
-  return contestants(state).filter((p) => p.connected && p.id !== clue.answererId);
+  const answering = clue.answererId ? getJeopardyPlayer(state, clue.answererId)?.teamId : undefined;
+  return contestants(state).filter((p) => p.connected && p.teamId !== answering);
 }
 
 function secondsFrom(state: JeopardyState, now: number, seconds: number): number | null {
@@ -321,7 +384,10 @@ function doPick(
   now: number
 ): JeopardyResult {
   if (state.clue) return err('Es läuft schon eine Frage.');
-  if (!canPick(state, playerId)) return err(`${picker(state)?.name ?? 'Jemand anderes'} wählt gerade.`);
+  if (!canPick(state, playerId)) {
+    const t = pickerTeam(state);
+    return err(`${t ? teamLabel(state, t) : 'Jemand anderes'} wählt gerade.`);
+  }
   if (!Number.isInteger(col) || col < 0 || col >= state.board.length) return err('Dieses Feld gibt es nicht.');
   if (!Number.isInteger(row) || row < 0 || row >= ROWS.length) return err('Dieses Feld gibt es nicht.');
   if (state.board[col].used[row]) return err('Dieses Feld ist schon gespielt.');
@@ -429,10 +495,12 @@ function doBuzz(
   // Partyspiel, kein Quiz-Duell.
   if (c.step === 'reading') return err('Der Buzzer ist noch zu.');
   if (c.step !== 'buzzing') return err('Zu spät.');
-  if (c.lockedOut.includes(playerId)) return err('Du hattest schon einen Versuch.');
   const p = getJeopardyPlayer(state, playerId);
   if (!p) return err('Du spielst nicht mit.');
   if (p.moderator) return err('Du moderierst – du buzzerst nicht mit.');
+  // Gesperrt ist das TEAM: Wenn der Kollege schon danebenlag, ist der
+  // Versuch verbraucht – sonst hätte ein Dreierteam drei davon.
+  if (c.lockedOut.includes(p.teamId)) return err('Dein Team hatte schon einen Versuch.');
   if (playerId in c.buzzes) return err('Schon gebuzzert.');
 
   if (state.local) {
@@ -535,11 +603,15 @@ function doJudge(
   if (c.step !== 'judging') return err('Gerade ist nichts zu werten.');
   if (c.answererId === playerId) return err('Über die eigene Antwort stimmst du nicht ab.');
   if (!getJeopardyPlayer(state, playerId)) return err('Du spielst nicht mit.');
-  // Mit Moderator wertet ER allein. Ohne diese Sperre landete die Stimme
-  // eines Mitspielers zwar in `votes`, würde aber trotzdem mitgezählt –
-  // `eligibleJudges` wartet dann nur noch auf ihn.
-  const mod = moderatorOf(state);
-  if (mod && mod.id !== playerId) return err(`${mod.name} wertet.`);
+  // Wer nicht werten darf, darf auch nicht abstimmen. Ohne diese Sperre
+  // landete die Stimme zwar nur in `votes`, würde von `tallyVotes` aber
+  // trotzdem mitgezählt – `eligibleJudges` wartet ja nur auf die anderen.
+  // Das betrifft den Moderator (er wertet allein) und den Teamkollegen des
+  // Antwortenden (er wäre Richter über die eigenen Punkte).
+  if (!eligibleJudges(state, c).some((p) => p.id === playerId)) {
+    const mod = moderatorOf(state);
+    return err(mod ? `${mod.name} wertet.` : 'Über die Punkte deines Teams stimmst du nicht ab.');
+  }
 
   c.votes[playerId] = correct;
 
@@ -563,10 +635,20 @@ function settleJudging(state: JeopardyState, pack: TriviaPack | null, now: numbe
 
   if (verdict) {
     const p = getJeopardyPlayer(state, answerer);
-    if (p) p.score += c.value;
-    jeopardyLog(state, 'money', `✅ ${p?.name ?? '?'} bekommt ${c.value} Punkte.`, answerer);
-    // Wer richtig lag, wählt das nächste Feld.
-    setPicker(state, answerer);
+    const team = teamOf(state, answerer);
+    // Die Punkte gehen aufs Team, nicht auf die Person: Der Punktestand IST
+    // das Team, und nur so gibt es einen einzigen Codepfad.
+    if (team) team.score += c.value;
+    jeopardyLog(
+      state,
+      'money',
+      team && membersOf(state, team.id).length > 1
+        ? `✅ ${p?.name ?? '?'} holt ${c.value} Punkte für ${teamLabel(state, team)}.`
+        : `✅ ${p?.name ?? '?'} bekommt ${c.value} Punkte.`,
+      answerer
+    );
+    // Wer richtig lag, wählt weiter – genauer: sein Team.
+    if (team) state.pickerTeamId = team.id;
     return reveal(state, c, true, pack, now);
   }
   return wrongAnswer(state, c, answerer, pack, now);
@@ -581,8 +663,10 @@ function wrongAnswer(
   now: number
 ): JeopardyResult {
   const p = getJeopardyPlayer(state, playerId);
-  if (state.rules.penalty && p) p.score -= clue.value;
-  if (!clue.lockedOut.includes(playerId)) clue.lockedOut.push(playerId);
+  const team = teamOf(state, playerId);
+  if (state.rules.penalty && team) team.score -= clue.value;
+  // Gesperrt ist das TEAM – sein Kollege bekommt keinen zweiten Versuch.
+  if (team && !clue.lockedOut.includes(team.id)) clue.lockedOut.push(team.id);
   jeopardyLog(
     state,
     'money',
@@ -645,32 +729,110 @@ function doNext(state: JeopardyState, playerId: string): JeopardyResult {
     finish(state);
     return ok;
   }
-  // Ein getrennter Picker würde das Brett blockieren – dann rückt der
-  // nächste Verbundene nach.
-  if (!picker(state)?.connected) {
-    const next = state.players.findIndex((p) => p.connected && !p.moderator);
-    if (next >= 0) state.pickerIndex = next;
+  // Ein Team, von dem niemand verbunden ist, würde das Brett blockieren –
+  // dann rückt das nächste nach.
+  const team = pickerTeam(state);
+  if (!team || !membersOf(state, team.id).some((p) => p.connected)) {
+    const next = state.teams.find((t) => membersOf(state, t.id).some((p) => p.connected));
+    if (next) state.pickerTeamId = next.id;
   }
-  jeopardyLog(state, 'info', `${picker(state)?.name ?? '?'} wählt.`);
+  const now = pickerTeam(state);
+  jeopardyLog(state, 'info', `${now ? teamLabel(state, now) : '?'} wählt.`);
   return ok;
 }
 
 function finish(state: JeopardyState): void {
   state.phase = 'ended';
   state.clue = null;
-  const best = contestants(state).sort((a, b) => b.score - a.score);
-  state.winnerId = best[0]?.id ?? null;
+  const best = [...state.teams].sort((a, b) => b.score - a.score);
+  state.winnerTeamId = best[0]?.id ?? null;
   jeopardyLog(
     state,
     'system',
     best.length > 1 && best[0].score === best[1].score
       ? `🏁 Unentschieden an der Spitze mit ${best[0].score} Punkten.`
-      : `🏆 ${best[0]?.name ?? '?'} gewinnt mit ${best[0]?.score ?? 0} Punkten.`
+      : `🏆 ${best[0] ? teamLabel(state, best[0]) : '?'} gewinnt mit ${best[0]?.score ?? 0} Punkten.`
   );
 }
 
 function findQuestion(pack: TriviaPack | null, id: string | null): TriviaQuestion | undefined {
   return id ? pack?.questions.find((q) => q.id === id) : undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Teams im Wartezimmer
+// ---------------------------------------------------------------------------
+
+/** Wer im Wartezimmer an den Teams schrauben darf. */
+function lobbyContestant(state: JeopardyState, playerId: string): JeopardyPlayer | string {
+  if (state.phase !== 'lobby') return 'Teams lassen sich nur im Wartezimmer ändern.';
+  const p = getJeopardyPlayer(state, playerId);
+  if (!p) return 'Du bist nicht im Raum.';
+  if (p.moderator) return 'Du moderierst – du spielst in keinem Team.';
+  return p;
+}
+
+function doJoinTeam(state: JeopardyState, playerId: string, teamId: string): JeopardyResult {
+  const p = lobbyContestant(state, playerId);
+  if (typeof p === 'string') return err(p);
+  const team = state.teams.find((t) => t.id === teamId);
+  if (!team) return err('Dieses Team gibt es nicht.');
+  if (p.teamId === team.id) return ok;
+  p.teamId = team.id;
+  pruneTeams(state);
+  jeopardyLog(state, 'system', `${p.name} spielt jetzt bei ${teamLabel(state, team)}.`, p.id);
+  return ok;
+}
+
+function doNewTeam(state: JeopardyState, playerId: string): JeopardyResult {
+  const p = lobbyContestant(state, playerId);
+  if (typeof p === 'string') return err(p);
+  if (membersOf(state, p.teamId).length === 1) return err('Du bist schon allein in einem Team.');
+  p.teamId = newTeamFor(state, p.color);
+  pruneTeams(state);
+  jeopardyLog(state, 'system', `${p.name} spielt jetzt allein.`, p.id);
+  return ok;
+}
+
+function doRenameTeam(
+  state: JeopardyState,
+  playerId: string,
+  teamId: string,
+  name: string
+): JeopardyResult {
+  const p = lobbyContestant(state, playerId);
+  if (typeof p === 'string') return err(p);
+  const team = state.teams.find((t) => t.id === teamId);
+  if (!team) return err('Dieses Team gibt es nicht.');
+  // Umbenennen darf, wer drin ist – oder der Host, der den Raum führt.
+  if (p.teamId !== team.id && !p.isHost) return err('Nur wer im Team ist, benennt es um.');
+  // Leer heißt „wieder aus den Mitgliedern ableiten" – ein Weg zurück.
+  team.name = name.trim().slice(0, 24);
+  jeopardyLog(state, 'system', `Das Team heißt jetzt ${teamLabel(state, team)}.`, p.id);
+  return ok;
+}
+
+/**
+ * Host: alle abwechselnd auf zwei Teams verteilen.
+ *
+ * Abwechselnd und nicht in Blöcken, damit die Reihenfolge im Wartezimmer
+ * nicht zufällig beide Vielwisser in dasselbe Team steckt. Danach kann jeder
+ * noch von Hand wechseln.
+ */
+function doSplitTeams(state: JeopardyState, playerId: string): JeopardyResult {
+  const p = lobbyContestant(state, playerId);
+  if (typeof p === 'string') return err(p);
+  if (!p.isHost) return err('Nur der Host teilt die Runde auf.');
+  const players = contestants(state);
+  if (players.length < 2) return err('Dafür sind zu wenige da.');
+
+  state.teams = [];
+  const a = newTeamFor(state, players[0].color);
+  const b = newTeamFor(state, players[1].color);
+  players.forEach((x, i) => (x.teamId = i % 2 === 0 ? a : b));
+  state.pickerTeamId = null;
+  jeopardyLog(state, 'system', '👥 Aufgeteilt auf zwei Teams.');
+  return ok;
 }
 
 // ---------------------------------------------------------------------------
@@ -716,7 +878,7 @@ export function jeopardyTick(state: JeopardyState, now: number, pack: TriviaPack
       return true;
     case 'revealed':
       // Die Uhr handelt für die Sendung: sie hat immer das Recht.
-      doNext(state, moderatorOf(state)?.id ?? state.players[state.pickerIndex]?.id ?? '');
+      doNext(state, moderatorOf(state)?.id ?? contestants(state)[0]?.id ?? '');
       return true;
   }
 }
@@ -774,8 +936,24 @@ export function applyJeopardyAction(
   pack: TriviaPack | null,
   now = Date.now()
 ): JeopardyResult {
-  if (state.phase !== 'playing') return err('Es läuft kein Spiel.');
   if (!action || typeof action !== 'object') return err('Unbekannte Aktion.');
+
+  // Die Team-Aktionen laufen im WARTEZIMMER, also vor der Phasenprüfung.
+  // `game:action` prüft selbst keine Phase (nur, ob jemand Zuschauer ist) –
+  // und `lobby:configure` wäre der falsche Weg, weil der host-gesperrt ist,
+  // sein Team sich aber jeder selbst aussucht.
+  switch (action.type) {
+    case 'joinTeam':
+      return doJoinTeam(state, playerId, String(action.teamId));
+    case 'newTeam':
+      return doNewTeam(state, playerId);
+    case 'renameTeam':
+      return doRenameTeam(state, playerId, String(action.teamId), String(action.name ?? ''));
+    case 'splitTeams':
+      return doSplitTeams(state, playerId);
+  }
+
+  if (state.phase !== 'playing') return err('Es läuft kein Spiel.');
 
   switch (action.type) {
     case 'pick':
@@ -803,12 +981,11 @@ export function applyJeopardyAction(
       if (!target) return err('Spieler nicht gefunden.');
       if (target.connected) return err('Nur getrennte Spieler lassen sich entfernen.');
       state.players = state.players.filter((p) => p.id !== target.id);
+      // Wird sein Team dadurch leer, verschwindet es – und `pruneTeams`
+      // rückt die Wahl weiter, falls es gerade dran war.
+      pruneTeams(state);
       jeopardyLog(state, 'system', `${target.name} wurde entfernt.`);
-      if (contestants(state).length < JEOPARDY_MIN_PLAYERS) finish(state);
-      else if (state.pickerIndex >= state.players.length) {
-        // Nicht auf 0 – da sitzt bei einer moderierten Sendung der Moderator.
-        state.pickerIndex = Math.max(0, state.players.findIndex((p) => !p.moderator));
-      }
+      if (contestants(state).length < JEOPARDY_MIN_PLAYERS || state.teams.length < 2) finish(state);
       return ok;
     }
     default:

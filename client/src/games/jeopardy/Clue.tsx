@@ -12,6 +12,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { CATEGORY_EMOJI, CATEGORY_LABELS } from '@shared/trivia/types';
+import { teamLabel } from '@shared/jeopardy/engine';
 import type { JeopardyPlayer, JeopardyView } from '@shared/jeopardy/types';
 
 /** Verbleibende Sekunden einer Frist. `null` = keine Uhr (lokaler Modus). */
@@ -66,6 +67,12 @@ function ReadClock({ deadline, seconds }: { deadline: number | null; seconds: nu
 
 function name(view: JeopardyView, id: string | null): string {
   return view.players.find((p) => p.id === id)?.name ?? '—';
+}
+
+/** Ein Team über seine ID – für die Sperrliste, die Team-IDs hält. */
+function teamName(view: JeopardyView, teamId: string): string {
+  const t = view.teams.find((x) => x.id === teamId);
+  return t ? teamLabel(view, t) : '—';
 }
 
 /** Antwortfeld für den, der das Wort hat. */
@@ -150,8 +157,12 @@ export function Clue({
   if (!c) return null;
 
   const iAnswer = !!me && c.answererId === me.id;
-  const iMayBuzz = !!me && !c.lockedOut.includes(me.id) && !(me.id in c.buzzes);
-  const iMayJudge = !!me && c.answererId !== me.id;
+  // Gesperrt und gewertet wird pro TEAM: Der Kollege des Antwortenden hat
+  // weder einen zweiten Versuch noch eine Stimme über die eigenen Punkte.
+  const answeringTeam = view.players.find((p) => p.id === c.answererId)?.teamId;
+  const iAmLockedOut = !!me && c.lockedOut.includes(me.teamId);
+  const iMayBuzz = !!me && !iAmLockedOut && !(me.id in c.buzzes);
+  const iMayJudge = !!me && me.teamId !== answeringTeam;
   const buzzed = Object.keys(c.buzzes);
 
   // `layout-board`, nicht bloß `board`: `.board` ist Monopolys Spielbrett und
@@ -191,7 +202,7 @@ export function Clue({
               <p className="hint">Wer war zuerst?</p>
               <div className="jeo-name-buzzers">
                 {view.players
-                  .filter((p) => !c.lockedOut.includes(p.id))
+                  .filter((p) => !p.moderator && !c.lockedOut.includes(p.teamId))
                   .map((p) => (
                     <button
                       key={p.id}
@@ -212,8 +223,8 @@ export function Clue({
             <p className="jeo-waiting">
               {!me
                 ? 'Buzzer offen – wer weiß es?'
-                : c.lockedOut.includes(me.id)
-                  ? 'Du hattest deinen Versuch – die anderen sind dran.'
+                : iAmLockedOut
+                  ? 'Dein Team hatte seinen Versuch – die anderen sind dran.'
                   : 'Gedrückt! Warte auf die Entscheidung …'}
             </p>
           )}
@@ -222,7 +233,9 @@ export function Clue({
             <p className="hint">🔔 {buzzed.map((id) => name(view, id)).join(', ')}</p>
           )}
           {c.lockedOut.length > 0 && (
-            <p className="hint">Raus: {c.lockedOut.map((id) => name(view, id)).join(', ')}</p>
+            <p className="hint">
+              Raus: {c.lockedOut.map((id) => teamName(view, id)).join(', ')}
+            </p>
           )}
           {isPicker && !moderated && (
             <button className="btn ghost" onClick={actions.skip}>
@@ -281,7 +294,12 @@ export function Clue({
                 </button>
               </div>
               <p className="hint">
-                {Object.keys(c.votes).length} von {view.players.filter((p) => p.connected).length - 1} gewertet
+                {Object.keys(c.votes).length} von{' '}
+                {/* Werten darf, wer nicht im Team des Antwortenden ist. */}
+                {view.players.filter(
+                  (p) => p.connected && !p.moderator && p.teamId !== answeringTeam
+                ).length}{' '}
+                gewertet
               </p>
             </>
           ) : (
