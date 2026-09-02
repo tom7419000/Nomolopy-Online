@@ -262,6 +262,57 @@ test('Karten: Geldkarten wirken sofort nach Bestätigung', () => {
   assert.equal(g.pendingCard, null);
 });
 
+test('Karten: Reicht das Geld nicht, bleibt die Karte offen statt zu verschwinden', () => {
+  const g = newGame();
+  roll(g, 'p1', 3, 4); // Feld 7: Ereignisfeld
+  assert.ok(g.pendingCard);
+  // Eine echte Karte kostet höchstens 150 – für eine verlässliche Schuld
+  // hier eine synthetische einsetzen, statt auf den Kartenstapel zu hoffen.
+  g.pendingCard!.card = {
+    id: 'test-expensive',
+    deck: 'chance',
+    text: 'Testkarte',
+    effect: { kind: 'money', amount: -9999 },
+  };
+  getPlayer(g, 'p1')!.money = 50;
+
+  assert.ok(applyAction(g, 'p1', { type: 'ackCard' }).ok);
+  assert.equal(g.turnPhase, 'debt', 'die Zahlung übersteigt das Bargeld');
+  assert.ok(g.pendingCard, 'die Karte bleibt sichtbar statt zu schließen');
+  assert.equal(g.pendingCard!.card.id, 'test-expensive');
+  assert.equal(g.debt?.amount, 9999);
+
+  // Ein zweites `ackCard` darf die Zahlung nicht nochmal auslösen.
+  const moneyNow = getPlayer(g, 'p1')!.money;
+  assert.equal(applyAction(g, 'p1', { type: 'ackCard' }).ok, false, 'die Karte ist schon gelesen');
+  assert.equal(getPlayer(g, 'p1')!.money, moneyNow, 'kein zweiter Abzug');
+
+  // Geld beschafft und bezahlt – jetzt schließt sich die Karte von selbst.
+  getPlayer(g, 'p1')!.money = 20000;
+  assert.ok(applyAction(g, 'p1', { type: 'payDebt' }).ok);
+  assert.equal(g.debt, null);
+  assert.equal(g.pendingCard, null, 'nach der Zahlung ist die Karte erledigt');
+  assert.equal(g.turnPhase, 'awaiting-end');
+});
+
+test('Karten: Bankrott statt Zahlung schließt die offene Karte ebenfalls', () => {
+  const g = newGame();
+  roll(g, 'p1', 3, 4);
+  g.pendingCard!.card = {
+    id: 'test-expensive-2',
+    deck: 'community',
+    text: 'Testkarte',
+    effect: { kind: 'money', amount: -9999 },
+  };
+  getPlayer(g, 'p1')!.money = 50;
+  applyAction(g, 'p1', { type: 'ackCard' });
+  assert.equal(g.turnPhase, 'debt');
+
+  assert.ok(applyAction(g, 'p1', { type: 'declareBankruptcy' }).ok);
+  assert.equal(getPlayer(g, 'p1')!.bankrupt, true);
+  assert.equal(g.pendingCard, null, 'mit dem Spieler verschwindet auch seine Karte');
+});
+
 test('Handel: Angebot, Annahme, Eigentumsübertragung', () => {
   const g = newGame();
   grant(g, 'p1', [5]);

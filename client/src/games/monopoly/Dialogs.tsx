@@ -10,10 +10,11 @@ import {
 } from '@shared/engine';
 import { cardText } from '@shared/cards';
 import { api } from '../../net';
-import { useIsMyTurn, useMe, useStore } from '../../state/store';
+import { useIsMyTurn, useMe, useSeatRotation, useStore } from '../../state/store';
 import { money, tileIcon } from '../../ui/format';
 import { Modal } from '../../components/Modal';
 import { RentTable } from './Board';
+import { DebtActions } from './Panels';
 
 // Re-Export: Modal war historisch hier definiert
 export { Modal };
@@ -25,26 +26,48 @@ export { Modal };
 
 export function CardModal({ game }: { game: GameState }) {
   const me = useMe();
+  // Am Tisch mit festen Plätzen dreht sich das Fenster zu dem, der die Karte
+  // gerade liest – wie Würfel und Aktionsleiste im Dock (siehe `SeatDock`).
+  // Online und beim Weiterreichen ist die Kante immer 0, die Zeile hier ist
+  // dann ein No-Op. Ohne das läse jeder, der nicht an der unteren Kante
+  // sitzt, die Karte kopfüber oder seitlich – und mit ihr den „OK"-Knopf.
+  const edge = useSeatRotation();
   const pending = game.pendingCard;
   if (!pending) return null;
   const owner = game.players.find((p) => p.id === pending.playerId);
   const isMine = pending.playerId === me?.id;
   const isChance = pending.card.deck === 'chance';
+  // Führte das Bestätigen in Schulden (zu wenig Geld für die Kartenzahlung),
+  // bleibt die Karte offen (siehe `applyCard`), und die Zahlungsoptionen
+  // stehen direkt hier – statt dass man sie nach dem Wegtippen erst im
+  // Aktionsbereich suchen müsste.
+  const owesFromCard = isMine && game.turnPhase === 'debt' && game.debt?.playerId === pending.playerId;
 
   return (
     <div className="modal-overlay card-overlay">
-      <div className={`game-card ${isChance ? 'chance' : 'community'}`} role="dialog" aria-modal="true">
+      <div
+        className={`game-card ${isChance ? 'chance' : 'community'}`}
+        style={{ ['--card-rotation' as string]: `${edge}deg` } as React.CSSProperties}
+        role="dialog"
+        aria-modal="true"
+      >
         <header>{isChance ? '❓ Ereigniskarte' : '🎁 Gemeinschaftskarte'}</header>
         <p className="card-text">{cardText(pending.card, game.edition)}</p>
-        <footer>
-          {isMine ? (
-            <button className="btn primary big" onClick={() => api.action({ type: 'ackCard' })} autoFocus>
-              OK
-            </button>
-          ) : (
-            <p className="hint">{owner?.name} liest die Karte …</p>
-          )}
-        </footer>
+        {owesFromCard ? (
+          <footer className="card-debt">
+            <DebtActions game={game} />
+          </footer>
+        ) : (
+          <footer>
+            {isMine ? (
+              <button className="btn primary big" onClick={() => api.action({ type: 'ackCard' })} autoFocus>
+                OK
+              </button>
+            ) : (
+              <p className="hint">{owner?.name} liest die Karte …</p>
+            )}
+          </footer>
+        )}
       </div>
     </div>
   );

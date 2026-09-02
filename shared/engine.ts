@@ -590,8 +590,14 @@ function drawCard(state: GameState, player: Player, deck: 'chance' | 'community'
 }
 
 function applyCard(state: GameState, player: Player, card: Card): void {
-  state.pendingCard = null;
   state.turnPhase = 'awaiting-end';
+  // Referenz vor der Wirkung merken: `drawCard` (via `resolveLanding`, siehe
+  // 'moveTo'/'moveBy') ersetzt `state.pendingCard` durch ein NEUES Objekt,
+  // sobald man auf einem weiteren Kartenfeld landet – das lässt sich so an
+  // der Objektidentität erkennen, ohne die Zwischenphasen selbst zu prüfen
+  // (TypeScript verengt `state.turnPhase` sonst fälschlich auf den oben
+  // zugewiesenen Wert und meldet die spätere Prüfung als nie erfüllbar).
+  const before = state.pendingCard;
   const e = card.effect;
   switch (e.kind) {
     case 'money':
@@ -601,22 +607,22 @@ function applyCard(state: GameState, player: Player, card: Card): void {
       } else {
         charge(state, player, -e.amount, null, 'Kartenzahlung', true);
       }
-      return;
+      break;
     case 'moveTo':
       moveTo(state, player, e.tile, e.collectGo);
       resolveLanding(state, player, diceTotal(state));
-      return;
+      break;
     case 'moveBy':
       moveBy(state, player, e.steps);
       resolveLanding(state, player, diceTotal(state));
-      return;
+      break;
     case 'gotojail':
       sendToJail(state, player);
-      return;
+      break;
     case 'jailFree':
       player.jailCards += 1;
       log(state, 'card', `${player.name} behält die Gefängnis-Frei-Karte.`, player.id);
-      return;
+      break;
     case 'perHouse': {
       let houses = 0;
       let hotels = 0;
@@ -630,24 +636,35 @@ function applyCard(state: GameState, player: Player, card: Card): void {
       const total = houses * e.house + hotels * e.hotel;
       if (total > 0) charge(state, player, total, null, 'Reparaturen', true);
       else log(state, 'info', `${player.name} besitzt keine Gebäude – nichts zu zahlen.`, player.id);
-      return;
+      break;
     }
     case 'collectFromEach': {
       for (const other of activePlayers(state)) {
         if (other.id === player.id) continue;
         forcePay(state, other, player.id, e.amount, 'Geschenk');
-        if (state.phase === 'ended') return;
+        if (state.phase === 'ended') break;
       }
-      return;
+      break;
     }
     case 'payToEach': {
       const others = activePlayers(state).filter((p) => p.id !== player.id);
       for (const other of others) {
         forcePay(state, player, other.id, e.amount, 'Kartenzahlung');
-        if (player.bankrupt || state.phase === 'ended') return;
+        if (player.bankrupt || state.phase === 'ended') break;
       }
-      return;
+      break;
     }
+  }
+
+  // Die Karte bleibt offen, solange ihre Auflösung noch etwas verlangt:
+  // eigene Schulden (zu wenig Geld für die Kartenzahlung) oder – nach einem
+  // Rücke-vor/zurück – gleich die nächste Karte (von `drawCard` schon
+  // gesetzt, siehe oben). Sonst ist sie erledigt. Ohne diese Unterscheidung
+  // würde eine Karte, die in Schulden mündet, sofort verschwinden, und der
+  // Spieler müsste die Zahlungsoptionen anderswo suchen – genau das soll
+  // das Kartenfenster stattdessen selbst anbieten.
+  if (state.debt === null && state.pendingCard === before) {
+    state.pendingCard = null;
   }
 }
 
@@ -1219,6 +1236,9 @@ function doUseJailCard(state: GameState, player: Player): ActionResult {
 function doAckCard(state: GameState, player: Player): ActionResult {
   if (!state.pendingCard) return err('Keine Karte offen.');
   if (state.pendingCard.playerId !== player.id) return err('Das ist nicht deine Karte.');
+  // Blieb die Karte wegen offener Schulden stehen, ist sie schon angewendet –
+  // ein zweites `ackCard` darf ihren Effekt nicht nochmal auslösen.
+  if (state.turnPhase !== 'awaiting-card') return err('Die Karte ist schon gelesen.');
   applyCard(state, player, state.pendingCard.card);
   return OK;
 }
@@ -1287,6 +1307,9 @@ function doPayDebt(state: GameState, player: Player): ActionResult {
     player.id
   );
   const then = debt.then;
+  // Wie in `applyCard`: Referenz vor der Fortsetzung merken, statt
+  // `state.turnPhase` erneut abzufragen (siehe Kommentar dort).
+  const cardBefore = state.pendingCard;
   state.debt = null;
   state.turnPhase = 'awaiting-end';
   if (then?.kind === 'jailRelease') {
@@ -1294,6 +1317,12 @@ function doPayDebt(state: GameState, player: Player): ActionResult {
     player.jailTurns = 0;
     moveBy(state, player, then.total);
     resolveLanding(state, player, then.total);
+  }
+  // Kam die Schuld von einer Karte (sie stand deshalb noch offen, siehe
+  // `applyCard`), ist sie jetzt beglichen – außer die Weiterbewegung eben
+  // hat gleich die nächste Karte gezogen oder eine neue Schuld ausgelöst.
+  if (state.debt === null && state.pendingCard === cardBefore) {
+    state.pendingCard = null;
   }
   return OK;
 }

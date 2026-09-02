@@ -39,7 +39,7 @@ LAN einfach `http://<deine-IP>:3001` an die Mitspieler geben. Port per `PORT`,
 Datenverzeichnis (Editionen/Spielstände) per `DATA_DIR` konfigurierbar.
 
 ```bash
-npm test                                    # Unit-Tests aller Spiele und des lokalen Raums (188 Tests)
+npm test                                    # Unit-Tests aller Spiele und des lokalen Raums (190 Tests)
 npm run typecheck
 npm run build && npm run test:e2e           # Browser-E2E: Monopoly inkl. Auktion (Playwright)
 npm run build && npm run test:e2e:poker     # Browser-E2E: Poker inkl. Karten-Redaction
@@ -95,7 +95,7 @@ mittig an der Kante, denn darunter liegt nur der eigene Sitz.
 
 | Spiel | Was liegt | Was sich dreht |
 |---|---|---|
-| 🎲 **Monopoly** | das Brett | Würfel, Aktionsknöpfe, Geldübersicht, letzte Zeile |
+| 🎲 **Monopoly** | das Brett | Würfel, Aktionsknöpfe, Geldübersicht, letzte Zeile, Ereignis-/Gemeinschaftskarte |
 | 🃏 **Poker** | Filz und Sitzkranz | die Aktionsleiste (Karten + Check/Call/Raise); jede Sitzbox zeigt zu ihrem Spieler |
 | 🧀 **Trivial Pursuit** | das Rad | Frage, Antwortmöglichkeiten, Würfel, Zielreihe |
 
@@ -114,10 +114,19 @@ dieselbe Frage, sie zu einem Einzelnen zu drehen machte sie für die anderen
 unlesbar. Ob ein Spiel etwas davon hat, steht als `caps.rotatesToActor` an
 seinem Modul – so kann kein Schalter dastehen, der nichts tut.
 
-Was **nicht** mitdreht: Toasts, Dialoge und die Kopfzeile. Sie hängen an
-`position: fixed` und an Viewport-Einheiten, die sich immer auf den physischen
-Bildschirm beziehen – in einem gedrehten Vorfahren verlören sie ihre
-Verankerung. Wer in den Verlauf schaut, lehnt sich hinüber.
+Was **nicht** mitdreht: Toasts, die übrigen Dialoge (Grundstück, Handel,
+Debug, Spielstände) und die Kopfzeile. Sie hängen an `position: fixed` und an
+Viewport-Einheiten, die sich immer auf den physischen Bildschirm beziehen –
+in einem gedrehten Vorfahren verlören sie ihre Verankerung. Wer in den
+Verlauf schaut, lehnt sich hinüber.
+
+Die Ereignis-/Gemeinschaftskarte ist die eine Ausnahme, gerade WEIL sie diese
+Falle umgeht: Ihr Rahmen bleibt ein normales, unrotiertes Vollbild-Overlay –
+gedreht wird nur die Karte darin selbst, über eine CSS-Variable statt einen
+gedrehten Vorfahren. Führt sie in Schulden (zu wenig Geld für die
+Kartenzahlung), bleibt sie offen und zeigt „Schulden bezahlen"/Verkaufen
+und Beleihen direkt unter dem Text, statt zu verschwinden und die Zahlung
+anderswo zu verstecken.
 
 ### Poker: Handkarten bleiben geheim
 
@@ -222,7 +231,10 @@ das Skript nicht.
   Werke nach Augenzahl (4×/10×), doppelte Grundmiete bei kompletter Farbgruppe (Regeloption)
 - **Häuser & Hotels** (1–4 Häuser, dann Hotel) mit Gleichmäßigkeits-Regel und
   begrenztem Bankvorrat (32 Häuser / 12 Hotels)
-- **Ereignis- und Gemeinschaftskarten**, Texte passen sich der Edition an
+- **Ereignis- und Gemeinschaftskarten**, Texte passen sich der Edition an.
+  Kostet eine Karte mehr, als das Bargeld hergibt, bleibt sie offen und zeigt
+  „Schulden bezahlen"/Verkaufen und Beleihen als Schnellaktionen direkt unter
+  dem Text – statt dass man sie nach dem Wegtippen anderswo suchen müsste
 - **Gefängnis**: Pasch würfeln (3 Versuche), Kaution zahlen oder Frei-Karte einsetzen
 - **Pasch**: sofort noch ein Zug; drei Päsche in Folge → Gefängnis
 - **Hypotheken** (50 % Beleihung, 10 % Zins beim Ablösen)
@@ -530,7 +542,7 @@ client/            React 18 + TypeScript + Vite + zustand
   state/store.ts     zentraler App-State (RoomEnvelope vom Server)
 
 tests/
-  engine.test.ts      30 Unit-Tests Monopoly-Regeln inkl. Auktionen (node:test)
+  engine.test.ts      32 Unit-Tests Monopoly-Regeln inkl. Auktionen und Karten-Schulden (node:test)
   poker.test.ts       19 Unit-Tests Poker (Rankings, Side-Pots, Blinds, Timeouts)
   local-room.test.ts  27 Unit-Tests lokaler Raum: Sitzrotation, Klon-Vertrag, Redaction
   trivia.test.ts      18 Unit-Tests Fragenformat, Ablenker, mitgeliefertes Paket

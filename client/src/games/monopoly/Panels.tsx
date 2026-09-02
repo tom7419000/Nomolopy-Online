@@ -144,7 +144,16 @@ export function PlayersPanel() {
 // Schulden-Box
 // ---------------------------------------------------------------------------
 
-function DebtBox({ game }: { game: GameState }) {
+/**
+ * Bezahlen oder Geld auftreiben – die eigentlichen Schulden-Aktionen.
+ *
+ * Exportiert, weil sie an zwei Stellen gebraucht werden: hier im Dock/in der
+ * Seitenspalte (`DebtBox`, für Schulden aus Miete, Steuer oder Kaution) und
+ * im Kartenfenster (`CardModal` in `Dialogs.tsx`), wenn eine Karte selbst in
+ * Schulden mündet – dort stehen sie direkt unter der Karte, statt dass man
+ * sie nach dem Wegtippen erst anderswo suchen müsste.
+ */
+export function DebtActions({ game }: { game: GameState }) {
   const me = useMe();
   const debt = game.debt!;
   if (!me || debt.playerId !== me.id) return null;
@@ -171,8 +180,7 @@ function DebtBox({ game }: { game: GameState }) {
   }
 
   return (
-    <div className="debt-box" role="alert">
-      <h3>⚠️ Schulden: {money(game, debt.amount)}</h3>
+    <>
       <p>
         {debt.reason} – fällig an {creditor ? creditor.name : 'die Bank'}. Du hast{' '}
         {money(game, me.money)}.
@@ -192,7 +200,7 @@ function DebtBox({ game }: { game: GameState }) {
       {hopeless && <p className="hint">Selbst mit allen Verkäufen reicht es nicht mehr …</p>}
       <div className="btn-row">
         <button className="btn primary" disabled={!canPay} onClick={() => api.action({ type: 'payDebt' })}>
-          Schulden bezahlen ({money(game, debt.amount)})
+          💰 Schulden bezahlen ({money(game, debt.amount)})
         </button>
         <button
           className="btn danger"
@@ -205,6 +213,16 @@ function DebtBox({ game }: { game: GameState }) {
           💥 Bankrott erklären
         </button>
       </div>
+    </>
+  );
+}
+
+function DebtBox({ game }: { game: GameState }) {
+  const debt = game.debt!;
+  return (
+    <div className="debt-box" role="alert">
+      <h3>⚠️ Schulden: {money(game, debt.amount)}</h3>
+      <DebtActions game={game} />
     </div>
   );
 }

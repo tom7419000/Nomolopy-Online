@@ -797,10 +797,16 @@ input[type='number'] { appearance: textfield; }
 
 .card-overlay { z-index: 60; }
 .game-card {
+  /* Am Tisch mit festen Plätzen dreht `CardModal` die Karte über diese
+     Variable zu dem, der sie liest (wie das Sitz-Dock) – online und beim
+     Weiterreichen bleibt sie bei 0deg. Die Einstiegs-Animation dreht relativ
+     dazu (siehe unten), damit nach dem Einschweben kein Sprung entsteht. */
+  --card-rotation: 0deg;
   width: min(360px, 92vw);
   border-radius: 16px;
   overflow: hidden;
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
+  transform: rotate(var(--card-rotation));
   animation: card-in 0.3s cubic-bezier(0.2, 1.4, 0.4, 1);
   background: #fdf8ec;
   color: #22301f;
@@ -810,10 +816,26 @@ input[type='number'] { appearance: textfield; }
 .game-card.community header { background: linear-gradient(120deg, #2295c9, #1a6fa8); }
 .card-text { padding: 22px 20px; font-size: 1.12rem; line-height: 1.45; min-height: 110px; }
 .game-card footer { padding: 0 20px 20px; display: flex; justify-content: center; }
+/* Bezahlen/Geld auftreiben braucht mehr als einen zentrierten Knopf: eine
+   Erklärzeile, ggf. Schnellaktionen, dann die Buttons – alles linksbündig
+   untereinander statt in der Mitte der Reihe zusammengequetscht. */
+.game-card footer.card-debt {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  text-align: left;
+  border-top: 1px solid rgba(34, 48, 31, 0.15);
+  padding-top: 14px;
+}
+/* `.hint` ist für helle Schrift auf dunklem Grund gedacht – auf der cremefarbenen
+   Karte wäre sie kaum lesbar. Ebenso holt sich ein einfacher `.btn` seine
+   Textfarbe sonst vom dunklen Seitenbereich; hier braucht er sie explizit. */
+.game-card .hint { color: rgba(34, 48, 31, 0.65); }
+.game-card .quick-actions .btn { color: var(--text); }
 
 @keyframes card-in {
-  from { transform: rotate(-7deg) scale(0.7); opacity: 0; }
-  to { transform: none; opacity: 1; }
+  from { transform: rotate(calc(var(--card-rotation) - 7deg)) scale(0.7); opacity: 0; }
+  to { transform: rotate(var(--card-rotation)); opacity: 1; }
 }
 
 /* Grundstückskarte */

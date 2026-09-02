@@ -43,7 +43,7 @@ declare const navigator: { serviceWorker: { controller: unknown } };
 declare const document: {
   querySelector(sel: string): { getAttribute(name: string): string | null } | null;
 };
-declare const getComputedStyle: (el: unknown) => { transform: string };
+declare const getComputedStyle: (el: unknown) => { transform: string; getPropertyValue(prop: string): string };
 
 function fail(msg: string): never {
   console.error(`❌ ${msg}`);
@@ -103,11 +103,47 @@ async function boardTransform(page: Page): Promise<string> {
   });
 }
 
-/** Beendet den laufenden Monopoly-Zug, egal welche Phase ansteht. */
-async function finishTurn(page: Page): Promise<void> {
+/**
+ * Die Dreh-Variable der Kartenkarte, so wie `CardModal` sie setzt – lesbar
+ * als „180deg" statt einer Transform-Matrix, gerade damit sie sich direkt
+ * gegen `dockEdge()` vergleichen lässt.
+ */
+async function cardRotation(page: Page): Promise<string> {
+  return page.evaluate<string>(() => {
+    const el = document.querySelector('.game-card');
+    return el ? getComputedStyle(el).getPropertyValue('--card-rotation').trim() : 'keine Karte';
+  });
+}
+
+/**
+ * Beendet den laufenden Monopoly-Zug, egal welche Phase ansteht.
+ *
+ * Liefert die Drehung der ERSTEN Karte, die dabei auftaucht (oder `null`,
+ * wenn keine kam) – für die Prüfung, dass sie sich am Tisch zum Handelnden
+ * dreht, bevor sie weggetippt wird.
+ */
+async function finishTurn(page: Page): Promise<string | null> {
   const tap = (l: ReturnType<Page['locator']>) => l.click({ timeout: 2000 }).catch(() => {});
+  let firstCardRotation: string | null = null;
   for (let i = 0; i < 20; i++) {
-    if (await page.locator('.game-card').isVisible().catch(() => false)) {
+    // Schulden zuerst prüfen: Führt eine Karte selbst in Schulden, bleibt
+    // sie offen und zeigt Bezahlen/Geld auftreiben statt eines OK-Knopfs –
+    // der nächste Zweig fände dort also gar nichts zu tippen.
+    if (await page.locator('.debt-box, .card-debt').isVisible().catch(() => false)) {
+      const pay = page.getByRole('button', { name: /Schulden bezahlen/ });
+      if (await pay.isEnabled().catch(() => false)) {
+        await tap(pay);
+      } else {
+        const quick = page.locator('.quick-actions button').first();
+        if (await quick.isVisible().catch(() => false)) {
+          await tap(quick);
+        } else {
+          page.once('dialog', (d) => d.accept());
+          await tap(page.getByRole('button', { name: /Bankrott erklären/ }));
+        }
+      }
+    } else if (await page.locator('.game-card').isVisible().catch(() => false)) {
+      if (firstCardRotation === null) firstCardRotation = await cardRotation(page);
       await tap(page.getByRole('button', { name: 'OK' }));
     } else if (await page.locator('.auction-box').isVisible().catch(() => false)) {
       // Das „Originalversion"-Preset versteigert ausgeschlagene Grundstücke.
@@ -120,12 +156,13 @@ async function finishTurn(page: Page): Promise<void> {
       await page.getByRole('button', { name: /Zug beenden|Nochmal würfeln/ }).isVisible().catch(() => false)
     ) {
       await tap(page.getByRole('button', { name: /Zug beenden|Nochmal würfeln/ }));
-      return;
+      return firstCardRotation;
     } else if (await page.getByRole('button', { name: /Würfeln/ }).first().isVisible().catch(() => false)) {
       await tap(page.getByRole('button', { name: /Würfeln/ }).first());
     }
     await page.waitForTimeout(250);
   }
+  return firstCardRotation;
 }
 
 async function main() {
@@ -288,8 +325,24 @@ async function main() {
     const firstEdge = await dockEdge(page);
     seen.add(firstEdge);
     let edgeChanged = false;
-    for (let i = 0; i < 6 && !edgeChanged; i++) {
-      await finishTurn(page);
+    let cardRotationChecked = false;
+    // 10 statt nur genug für den Kantenwechsel: Ereignis-/Gemeinschaftsfelder
+    // sind nur 6 von 40, die Drehprüfung braucht also ein paar Runden mehr,
+    // um mit guter Wahrscheinlichkeit auch mal eine Karte zu erwischen.
+    for (let i = 0; i < 10 && !(edgeChanged && cardRotationChecked); i++) {
+      // Vor dem Zug merken, wer dran ist – eine Karte während dieses Zugs
+      // gehört noch ihm, nicht dem, der als Nächstes drankommt.
+      const edgeBefore = await dockEdge(page);
+      const cardEdge = await finishTurn(page);
+      if (cardEdge !== null) {
+        cardRotationChecked = true;
+        if (cardEdge !== `${edgeBefore}deg`) {
+          fail(
+            `Die Ereignis-/Gemeinschaftskarte stand bei ${cardEdge} statt ${edgeBefore}deg – ` +
+              `sie muss sich wie Würfel und Aktionsleiste zum Handelnden drehen.`
+          );
+        }
+      }
       const now = await dockEdge(page);
       seen.add(now);
       if (now !== firstEdge) edgeChanged = true;
@@ -298,6 +351,9 @@ async function main() {
       fail(`Das Dock bleibt immer an Kante ${firstEdge}° – es soll dem Spieler folgen.`);
     }
     if (await boardTransform(page) !== 'none') fail('Das Brett hat sich doch gedreht.');
+    if (cardRotationChecked) {
+      console.log('✔ Die Ereignis-/Gemeinschaftskarte dreht sich zum Handelnden, nicht mehr fest');
+    }
 
     // Nach einem Reload muss die Sitzordnung noch stehen
     const before = await dockEdge(page);
